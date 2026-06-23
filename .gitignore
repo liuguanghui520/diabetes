@@ -1,5 +1,6 @@
 # Keep the repository root clean for staged subprojects.
 *
 !/.gitignore
+!/README.md
 !/frontend/
 !/frontend/**
