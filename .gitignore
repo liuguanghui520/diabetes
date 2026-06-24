@@ -4,3 +4,13 @@
 !/README.md
 !/frontend/
 !/frontend/**
+!/express/
+!/express/**
+
+express/node_modules/
+express/.env
+express/.env.*
+!express/.env.example
+express/coverage/
+express/dist/
+express/docs/
