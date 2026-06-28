@@ -203,4 +203,70 @@ describe('Express API', () => {
     expect(allowed.status).toBe(200)
     expect(allowed.body.code).toBe(0)
   })
+
+  it('protects admin APIs and supports article publishing', async () => {
+    const { app, store } = await createTestContext()
+    const userToken = await registerAndLogin(request, app)
+
+    const denied = await request(app)
+      .get('/api/admin/dashboard')
+      .set('Authorization', `Bearer ${userToken}`)
+    expect(denied.status).toBe(403)
+
+    const admin = await store.createUser({
+      username: 'admin',
+      password_hash: '$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy',
+      role: 'admin',
+      nickname: '管理员'
+    })
+    const adminToken = (await import('../../src/modules/auth/auth.js')).signToken(admin, {
+      jwt: {
+        secret: 'test-secret',
+        expiresIn: '7d'
+      }
+    })
+
+    const created = await request(app)
+      .post('/api/admin/articles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        title: '糖尿病日常管理指南',
+        summary: '科学饮食、规律运动和复查提醒。',
+        content: '正文内容',
+        status: 'draft',
+        audit_status: 'approved'
+      })
+    expect(created.status).toBe(200)
+
+    const published = await request(app)
+      .post(`/api/admin/articles/${created.body.data.id}/publish`)
+      .set('Authorization', `Bearer ${adminToken}`)
+    expect(published.status).toBe(200)
+    expect(published.body.data.status).toBe('published')
+
+    const savedHome = await request(app)
+      .put('/api/admin/home-config')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        slots: [{
+          slot_code: 'hot_articles',
+          target_type: 'article',
+          target_id: created.body.data.id,
+          title: '首页推荐',
+          sort_order: 1,
+          status: 'active'
+        }]
+      })
+    expect(savedHome.status).toBe(200)
+    expect(savedHome.body.data.slots[0]).toMatchObject({
+      slot_code: 'hot_articles',
+      target_type: 'article',
+      title: '首页推荐'
+    })
+
+    const homeConfig = await request(app)
+      .get('/api/admin/home-config')
+      .set('Authorization', `Bearer ${adminToken}`)
+    expect(homeConfig.body.data.slots).toHaveLength(1)
+  })
 })

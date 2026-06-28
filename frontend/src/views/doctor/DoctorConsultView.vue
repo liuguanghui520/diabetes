@@ -308,7 +308,13 @@ onMounted(() => {
 
         <label class="search-box">
           <SearchOutlined />
-          <input v-model="keyword" aria-label="搜索医生、科室或控糖问题" placeholder="搜索医生、科室、控糖问题" />
+          <input
+            v-model="keyword"
+            name="doctor_search"
+            autocomplete="off"
+            aria-label="搜索医生、科室或控糖问题"
+            placeholder="搜索医生、科室、控糖问题"
+          />
         </label>
 
         <section
@@ -338,7 +344,11 @@ onMounted(() => {
             v-for="doctor in filteredDoctors"
             :key="doctor.id"
             class="doctor-row"
+            role="button"
+            tabindex="0"
             @click="openChat(doctor)"
+            @keydown.enter="openChat(doctor)"
+            @keydown.space.prevent="openChat(doctor)"
           >
             <button
               type="button"
@@ -387,7 +397,7 @@ onMounted(() => {
               >
                 {{ currentDoctor.avatar }}
               </button>
-              <p>{{ item.content || '正在整理回复...' }}</p>
+              <p>{{ item.content || '正在整理回复…' }}</p>
               <span v-if="item.role === 'user'" class="message-avatar user-avatar">我</span>
             </article>
           </template>
@@ -395,9 +405,22 @@ onMounted(() => {
       </section>
 
       <form v-if="pageMode === 'chat'" class="chat-input" @submit.prevent="sendDoctorMessage()">
-        <input v-model="message" aria-label="输入医生咨询问题" enterkeyhint="send" placeholder="输入想咨询的问题" />
+        <input
+          v-model="message"
+          name="doctor_message"
+          autocomplete="off"
+          aria-label="输入医生咨询问题"
+          enterkeyhint="send"
+          placeholder="输入想咨询的问题"
+        />
         <div v-if="pendingFiles.length" class="doctor-attachments">
-          <button v-for="(file, index) in pendingFiles" :key="`${file.name}-${index}`" type="button" @click="pendingFiles.splice(index, 1)">
+          <button
+            v-for="(file, index) in pendingFiles"
+            :key="`${file.name}-${index}`"
+            type="button"
+            :aria-label="`移除咨询附件 ${file.name}`"
+            @click="pendingFiles.splice(index, 1)"
+          >
             <PaperClipOutlined />
             {{ file.name }}
           </button>
@@ -407,7 +430,7 @@ onMounted(() => {
           <button type="button" aria-label="拍照上传" @click="handleTool('photo')"><CameraOutlined /></button>
           <button type="button" aria-label="添加表情" @click="handleTool('emoji')"><SmileOutlined /></button>
           <button type="button" aria-label="选择文件" @click="handleTool('file')"><PaperClipOutlined /></button>
-          <button class="send-tool" type="submit" :disabled="sending"><SendOutlined /></button>
+          <button class="send-tool" type="submit" aria-label="发送咨询消息" :disabled="sending"><SendOutlined /></button>
         </div>
         <input
           ref="doctorFileInput"
@@ -421,7 +444,7 @@ onMounted(() => {
       </form>
 
       <transition name="toast">
-        <div v-if="toastText" class="app-toast">{{ toastText }}</div>
+        <div v-if="toastText" class="app-toast" role="status" aria-live="polite">{{ toastText }}</div>
       </transition>
     </section>
   </main>
@@ -552,7 +575,6 @@ onMounted(() => {
 .search-box input {
   min-width: 0;
   border: 0;
-  outline: 0;
   color: #101936;
   background: transparent;
   font-size: 13px;
@@ -831,7 +853,6 @@ onMounted(() => {
   height: 42px;
   border: 0;
   border-radius: 13px;
-  outline: 0;
   padding: 0 13px;
   color: #101936;
   background: #ffffff;

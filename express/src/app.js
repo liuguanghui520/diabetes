@@ -9,6 +9,7 @@ import { registerRiskRoutes } from './modules/risk/routes.js'
 import { registerAssistantRoutes } from './modules/assistant/routes.js'
 import { registerInternalRoutes } from './modules/internal/routes.js'
 import { registerContentRoutes } from './modules/content/routes.js'
+import { registerAdminRoutes } from './modules/admin/routes.js'
 
 export async function createApp(config, overrides = {}) {
   const app = express()
@@ -32,6 +33,7 @@ export async function createApp(config, overrides = {}) {
   registerRiskRoutes(api, deps)
   registerAssistantRoutes(api, deps)
   registerContentRoutes(api, deps)
+  registerAdminRoutes(api, deps)
   app.use('/api', api)
 
   registerInternalRoutes(app, deps)

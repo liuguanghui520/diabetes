@@ -324,7 +324,6 @@ function handleScoreAction() {
 }
 
 function handleTabChange(key) {
-  if (key === 'health') return
   router.push({ name: key === 'home' ? 'home' : key })
 }
 
@@ -412,9 +411,9 @@ onBeforeUnmount(() => {
         </section>
       </div>
 
-      <LiquidTabBar active-key="health" @change="handleTabChange" />
+      <LiquidTabBar active-key="profile" @change="handleTabChange" />
       <transition name="toast">
-        <div v-if="toastText" class="app-toast">{{ toastText }}</div>
+        <div v-if="toastText" class="app-toast" role="status" aria-live="polite">{{ toastText }}</div>
       </transition>
     </section>
   </main>

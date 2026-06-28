@@ -18,7 +18,12 @@ export function createMemoryStore() {
     difyLogs: [],
     doctors: [],
     articles: [],
-    diabetesTypes: []
+    diabetesTypes: [],
+    articleFavorites: [],
+    consultations: [],
+    auditLogs: [],
+    categories: [],
+    homeConfigs: []
   }
 
   const counters = {
@@ -27,7 +32,13 @@ export function createMemoryStore() {
     risks: 1,
     conversations: 1,
     messages: 1,
-    difyLogs: 1
+    difyLogs: 1,
+    doctors: 1,
+    articles: 1,
+    consultations: 1,
+    auditLogs: 1,
+    categories: 1,
+    homeConfigs: 1
   }
 
   return {
@@ -70,6 +81,15 @@ export function createMemoryStore() {
 
       counters.users += 1
       state.users.push(user)
+      return clone(user)
+    },
+
+    async updateLastLogin(userId, input = {}) {
+      const user = state.users.find((item) => item.id === Number(userId))
+      if (!user) return null
+      user.last_login_at = now()
+      user.last_login_ip = input.last_login_ip || null
+      user.updated_at = now()
       return clone(user)
     },
 
@@ -290,8 +310,75 @@ export function createMemoryStore() {
       }
     },
 
+    async getArticleById(id, { userId = null } = {}) {
+      const recommendations = await this.getArticleRecommendations({ page: 1, pageSize: 100 })
+      const article = recommendations.items.find((item) => String(item.id) === String(id))
+
+      if (!article) {
+        return null
+      }
+
+      article.view_count = Number(article.view_count || article.views || 0) + 1
+      article.favorited = state.articleFavorites.some((item) => (
+        item.user_id === Number(userId) && String(item.article_id) === String(id)
+      ))
+      return clone(article)
+    },
+
+    async toggleArticleFavorite(userId, articleId) {
+      const index = state.articleFavorites.findIndex((item) => (
+        item.user_id === Number(userId) && String(item.article_id) === String(articleId)
+      ))
+
+      if (index >= 0) {
+        state.articleFavorites.splice(index, 1)
+        return { favorited: false }
+      }
+
+      state.articleFavorites.push({
+        id: state.articleFavorites.length + 1,
+        user_id: Number(userId),
+        article_id: articleId,
+        created_at: now()
+      })
+      return { favorited: true }
+    },
+
     async getDoctorById(id) {
       return clone(state.doctors.find((doctor) => doctor.id === Number(id)) || null)
+    },
+
+    async listDoctors() {
+      const seededDoctors = state.doctors.length > 0
+        ? state.doctors
+        : [
+            {
+              id: 1,
+              name: '赵晓峰',
+              title: '主任医师',
+              department: '内分泌科',
+              specialty: '糖尿病综合管理',
+              intro: '擅长糖尿病风险评估、用药随访和生活方式干预。',
+              online_status: 'online',
+              consult_status: 'online',
+              display_status: 'published',
+              sort_order: 1
+            },
+            {
+              id: 2,
+              name: '孙雅琴',
+              title: '副主任医师',
+              department: '内分泌科',
+              specialty: '妊娠糖尿病与饮食管理',
+              intro: '关注女性代谢健康和个体化饮食建议。',
+              online_status: 'online',
+              consult_status: 'online',
+              display_status: 'published',
+              sort_order: 2
+            }
+          ]
+
+      return clone(seededDoctors)
     },
 
     async getActivePlan(userId) {
@@ -332,6 +419,242 @@ export function createMemoryStore() {
         ...input,
         created_at: now()
       }
+    },
+
+    async getCheckinRecords() {
+      return []
+    },
+
+    async getCheckinAnalysis() {
+      return {
+        period_days: 7,
+        completion_rate: 78,
+        completed_count: 11,
+        expected_count: 14,
+        evaluation: '您的饮食和运动打卡完成情况良好，尤其是在运动方面表现突出。',
+        advice: '继续保持良好的饮食和运动习惯，注意饮食多样性和运动适度。'
+      }
+    },
+
+    async createConsultationOrder(input) {
+      const order = {
+        id: counters.consultations,
+        ...input,
+        status: 'waiting_admin',
+        priority: input.priority || 'normal',
+        created_at: now(),
+        updated_at: now()
+      }
+      counters.consultations += 1
+      state.consultations.push(order)
+      return clone(order)
+    },
+
+    async listConsultations({ userId = null, status = null } = {}) {
+      return clone(state.consultations.filter((item) => (
+        (userId === null || item.user_id === Number(userId)) &&
+        (status === null || item.status === status)
+      )))
+    },
+
+    async auditLog(input) {
+      const item = {
+        id: counters.auditLogs,
+        ...input,
+        created_at: now()
+      }
+      counters.auditLogs += 1
+      state.auditLogs.push(item)
+      return clone(item)
+    },
+
+    async listAdminUsers() {
+      return {
+        items: clone(state.users.map((user) => ({
+          id: user.id,
+          username: user.username,
+          phone: user.phone,
+          email: user.email,
+          role: user.role,
+          status: user.status,
+          nickname: user.nickname,
+          avatar_url: user.avatar_url,
+          last_login_at: user.last_login_at || null,
+          created_at: user.created_at,
+          updated_at: user.updated_at
+        }))),
+        total: state.users.length,
+        page: 1,
+        pageSize: 20
+      }
+    },
+
+    async updateUserStatus(id, status) {
+      const user = state.users.find((item) => item.id === Number(id))
+      const before = clone(user)
+      if (user) {
+        user.status = status
+        user.updated_at = now()
+      }
+      return { before, after: clone(user) }
+    },
+
+    async listAdminArticles({ page = 1, pageSize = 20 } = {}) {
+      const recommendations = await this.getArticleRecommendations({ page, pageSize })
+      return recommendations
+    },
+
+    async getAdminArticle(id) {
+      const article = state.articles.find((item) => String(item.id) === String(id))
+      return clone(article || null)
+    },
+
+    async createAdminArticle(input) {
+      const item = {
+        id: counters.articles,
+        category_id: input.category_id || null,
+        title: input.title,
+        summary: input.summary || '',
+        content: input.content || input.content_md || '',
+        cover_url: input.cover_url || '',
+        tags: input.tags || [],
+        author: input.author || '',
+        status: input.status || 'draft',
+        audit_status: input.audit_status || 'approved',
+        recommend_weight: input.recommend_weight || 0,
+        view_count: 0,
+        like_count: 0,
+        favorite_count: 0,
+        created_at: now(),
+        updated_at: now()
+      }
+      counters.articles += 1
+      state.articles.push(item)
+      return clone(item)
+    },
+
+    async updateAdminArticle(id, input) {
+      const item = state.articles.find((article) => String(article.id) === String(id))
+      const before = clone(item)
+      if (!item) {
+        throw errors.notFound('文章不存在')
+      }
+      Object.assign(item, input, { updated_at: now() })
+      return { before, after: clone(item) }
+    },
+
+    async deleteAdminArticle(id) {
+      const index = state.articles.findIndex((article) => String(article.id) === String(id))
+      const before = index >= 0 ? clone(state.articles[index]) : null
+      if (index >= 0) {
+        state.articles.splice(index, 1)
+      }
+      return { before, after: null }
+    },
+
+    async setArticleStatus(id, status) {
+      return this.updateAdminArticle(id, { status })
+    },
+
+    async listArticleCategories() {
+      return clone(state.categories)
+    },
+
+    async createArticleCategory(input) {
+      const item = {
+        id: counters.categories,
+        name: input.name,
+        code: input.code || null,
+        sort_order: input.sort_order || 0,
+        status: input.status || 'published'
+      }
+      counters.categories += 1
+      state.categories.push(item)
+      return clone(item)
+    },
+
+    async updateArticleCategory(id, input) {
+      const item = state.categories.find((category) => category.id === Number(id))
+      const before = clone(item)
+      if (item) Object.assign(item, input)
+      return { before, after: clone(item) }
+    },
+
+    async deleteArticleCategory(id) {
+      const index = state.categories.findIndex((category) => category.id === Number(id))
+      const before = index >= 0 ? clone(state.categories[index]) : null
+      if (index >= 0) state.categories.splice(index, 1)
+      return { before, after: null }
+    },
+
+    async listAdminDoctors() {
+      const items = await this.listDoctors()
+      return { items, total: items.length, page: 1, pageSize: 20 }
+    },
+
+    async createAdminDoctor(input) {
+      const item = {
+        id: counters.doctors,
+        name: input.name,
+        title: input.title || '',
+        department: input.department || '',
+        specialty: input.specialty || '',
+        intro: input.intro || '',
+        avatar_url: input.avatar_url || '',
+        license_no: input.license_no || '',
+        online_status: input.online_status || 'online',
+        consult_status: input.consult_status || 'online',
+        display_status: input.display_status || 'published',
+        audit_status: input.audit_status || 'approved',
+        sort_order: input.sort_order || 0,
+        created_at: now(),
+        updated_at: now()
+      }
+      counters.doctors += 1
+      state.doctors.push(item)
+      return clone(item)
+    },
+
+    async updateAdminDoctor(id, input) {
+      const item = state.doctors.find((doctor) => doctor.id === Number(id))
+      const before = clone(item)
+      if (!item) throw errors.notFound('医生不存在')
+      Object.assign(item, input, { updated_at: now() })
+      return { before, after: clone(item) }
+    },
+
+    async deleteAdminDoctor(id) {
+      const index = state.doctors.findIndex((doctor) => doctor.id === Number(id))
+      const before = index >= 0 ? clone(state.doctors[index]) : null
+      if (index >= 0) state.doctors.splice(index, 1)
+      return { before, after: null }
+    },
+
+    async listDifyLogs() {
+      return { items: clone(state.difyLogs), total: state.difyLogs.length, page: 1, pageSize: 20 }
+    },
+
+    async listHomeConfig() {
+      return clone([...state.homeConfigs].sort((a, b) => {
+        if (a.slot_code === b.slot_code) return a.sort_order - b.sort_order || a.id - b.id
+        return a.slot_code.localeCompare(b.slot_code)
+      }))
+    },
+
+    async replaceHomeConfig(slots = [], adminUserId = null) {
+      state.homeConfigs = slots.map((slot) => ({
+        id: counters.homeConfigs++,
+        slot_code: slot.slot_code,
+        target_type: slot.target_type,
+        target_id: slot.target_id || null,
+        title: slot.title || null,
+        sort_order: slot.sort_order || 0,
+        status: slot.status || 'active',
+        created_by: adminUserId || null,
+        created_at: now(),
+        updated_at: now()
+      }))
+      return this.listHomeConfig()
     }
   }
 }

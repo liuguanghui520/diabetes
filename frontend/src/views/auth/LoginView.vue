@@ -829,7 +829,6 @@ onBeforeUnmount(() => {
 .input-main input {
   width: 100%;
   min-width: 0;
-  outline: none;
   border: 0;
   margin-left: 11px;
   padding: 0;

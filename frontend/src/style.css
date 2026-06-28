@@ -410,7 +410,6 @@ textarea:focus-visible,
 .app-field textarea {
   width: 100%;
   border: 0;
-  outline: 0;
   color: #17243a;
   background: transparent;
   font-size: 13px;
@@ -651,7 +650,6 @@ textarea:focus-visible,
 .search-box input {
   min-width: 0;
   border: 0;
-  outline: 0;
   color: #101936;
   background: transparent;
   font-size: 13px;
@@ -965,7 +963,6 @@ textarea:focus-visible,
   height: 42px;
   border: 0;
   border-radius: 13px;
-  outline: 0;
   padding: 0 13px;
   color: #101936;
   background: #ffffff;

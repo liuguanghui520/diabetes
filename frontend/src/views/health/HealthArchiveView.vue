@@ -400,6 +400,7 @@ onMounted(loadProfile)
               v-for="(file, index) in reportFiles"
               :key="`${file.name}-${index}`"
               type="button"
+              :aria-label="`移除体检报告 ${file.name}`"
               @click="reportFiles.splice(index, 1)"
             >
               <FileSearchOutlined />
@@ -437,7 +438,7 @@ onMounted(loadProfile)
       </div>
 
       <transition name="toast">
-        <div v-if="toastText" class="app-toast">{{ toastText }}</div>
+        <div v-if="toastText" class="app-toast" role="status" aria-live="polite">{{ toastText }}</div>
       </transition>
     </section>
   </main>

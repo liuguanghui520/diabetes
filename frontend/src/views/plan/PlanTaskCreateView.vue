@@ -126,6 +126,7 @@ function cancelEdit() {
 }
 
 function deleteTask(task) {
+  if (!window.confirm(`确认删除“${task.title}”？`)) return
   existingTasks.value = existingTasks.value.filter(i=>i.id!==task.id)
   writeTasks(existingTasks.value)
   if (editingId.value===task.id) cancelEdit()
@@ -192,9 +193,9 @@ onMounted(() => {
       <div class="ep-scroll">
         <!-- 导航 — 参考 personal-nav 模式 -->
         <header class="ep-nav">
-          <button aria-label="返回" @click="goBack"><ArrowLeftOutlined /></button>
+          <button type="button" aria-label="返回" @click="goBack"><ArrowLeftOutlined /></button>
           <strong>{{ editingId ? '修改任务' : '新建任务' }}</strong>
-          <button v-if="editingId" class="ep-cancel-nav" @click="cancelEdit">取消</button>
+          <button v-if="editingId" type="button" class="ep-cancel-nav" @click="cancelEdit">取消</button>
           <span v-else></span>
         </header>
 
@@ -209,7 +210,7 @@ onMounted(() => {
           <div class="ep-band-head">
             <van-icon name="star-o" size="14" color="#1677ff" />
             <span>AI 推荐</span>
-            <button class="ep-gen-btn" :class="{ loading }" :disabled="loading" @click="generateAi">
+            <button type="button" class="ep-gen-btn" :class="{ loading }" :disabled="loading" @click="generateAi">
               <van-icon name="magic" size="12" />
               {{ loading ? '生成中' : '生成' }}
             </button>
@@ -218,7 +219,7 @@ onMounted(() => {
           <div v-if="aiSuggestions.length" class="ep-ai-box">
             <div class="ep-ai-top">
               <span>推荐目标</span>
-              <button @click="acceptAll">全部采纳</button>
+              <button type="button" @click="acceptAll">全部采纳</button>
             </div>
             <button
               v-for="(item, idx) in aiSuggestions"
@@ -321,7 +322,7 @@ onMounted(() => {
       </div>
 
       <transition name="toast-fade">
-        <div v-if="toastText" class="app-toast">{{ toastText }}</div>
+        <div v-if="toastText" class="app-toast" role="status" aria-live="polite">{{ toastText }}</div>
       </transition>
     </section>
   </main>

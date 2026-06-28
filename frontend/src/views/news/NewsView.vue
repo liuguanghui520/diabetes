@@ -171,10 +171,10 @@ const articleComments = computed(() => {
 
 const commentPlaceholder = computed(() => {
   if (replyTarget.value) {
-    return `回复 ${replyTarget.value.user}...`
+    return `回复 ${replyTarget.value.user}…`
   }
 
-  return '说点什么...'
+  return '说点什么…'
 })
 
 const hasUserCommented = computed(() => {
@@ -348,7 +348,13 @@ onMounted(loadArticles)
         <section class="feed-search">
           <label>
             <SearchOutlined />
-            <input v-model="keyword" aria-label="搜索健康资讯" placeholder="控糖饮食 风险筛查" />
+            <input
+              v-model="keyword"
+              name="news_search"
+              autocomplete="off"
+              aria-label="搜索健康资讯"
+              placeholder="控糖饮食 风险筛查"
+            />
           </label>
         </section>
 
@@ -378,7 +384,11 @@ onMounted(loadArticles)
             v-for="article in visibleArticles"
             :key="article.id"
             class="feed-article"
+            role="button"
+            tabindex="0"
             @click="openArticle(article)"
+            @keydown.enter="openArticle(article)"
+            @keydown.space.prevent="openArticle(article)"
           >
             <div class="article-meta">
               <span class="author-avatar">{{ String(article.author || '健').slice(0, 1) }}</span>
@@ -453,7 +463,13 @@ onMounted(loadArticles)
           <section ref="commentBlockRef" class="comment-block">
             <h2>评论 {{ articleComments.length }}</h2>
             <form class="comment-input" @submit.prevent="submitComment">
-              <input v-model="commentDraft" aria-label="输入评论" :placeholder="commentPlaceholder" />
+              <input
+                v-model="commentDraft"
+                name="article_comment"
+                autocomplete="off"
+                aria-label="输入评论"
+                :placeholder="commentPlaceholder"
+              />
               <button type="submit">发送</button>
             </form>
 
@@ -463,6 +479,7 @@ onMounted(loadArticles)
                 <header>
                   <strong>{{ comment.user }}</strong>
                   <button
+                    :aria-label="commentLikedIds.has(String(comment.id)) ? '取消点赞评论' : '点赞评论'"
                     type="button"
                     :class="{ active: commentLikedIds.has(String(comment.id)) }"
                     @click="toggleCommentLike(comment)"
@@ -486,6 +503,7 @@ onMounted(loadArticles)
         <footer class="detail-toolbar">
           <button
             type="button"
+            :aria-label="likedIds.has(selectedArticle.id) ? '取消点赞文章' : '点赞文章'"
             :class="{ active: likedIds.has(selectedArticle.id) }"
             @click="toggleLike(selectedArticle)"
           >
@@ -495,6 +513,7 @@ onMounted(loadArticles)
           </button>
           <button
             type="button"
+            :aria-label="favoriteIds.has(selectedArticle.id) ? '取消收藏文章' : '收藏文章'"
             :class="{ active: favoriteIds.has(selectedArticle.id) }"
             @click="toggleFavorite(selectedArticle)"
           >
@@ -502,7 +521,7 @@ onMounted(loadArticles)
             <StarOutlined v-else />
             <span>{{ favoriteIds.has(selectedArticle.id) ? '已藏' : '收藏' }}</span>
           </button>
-          <button type="button" :class="{ active: hasUserCommented }" @click="scrollToComments">
+          <button type="button" aria-label="查看评论" :class="{ active: hasUserCommented }" @click="scrollToComments">
             <MessageFilled v-if="hasUserCommented" />
             <CommentOutlined v-else />
             <span>评论</span>
@@ -512,7 +531,7 @@ onMounted(loadArticles)
 
       <LiquidTabBar v-if="!selectedArticle" active-key="news" @change="handleTabChange" />
       <transition name="toast">
-        <div v-if="toastText" class="app-toast">{{ toastText }}</div>
+        <div v-if="toastText" class="app-toast" role="status" aria-live="polite">{{ toastText }}</div>
       </transition>
     </section>
   </main>
@@ -612,7 +631,6 @@ onMounted(loadArticles)
   min-width: 0;
   flex: 1;
   border: 0;
-  outline: 0;
   color: #1f2329;
   background: transparent;
   font-size: 14px;
@@ -1041,7 +1059,6 @@ onMounted(loadArticles)
   height: 42px;
   border: 0;
   border-radius: 18px;
-  outline: 0;
   padding: 0 14px;
   color: #252932;
   background: #f3f5fa;

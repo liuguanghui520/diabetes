@@ -14,11 +14,12 @@ import DoctorConsultView from '../views/doctor/DoctorConsultView.vue'
 import DoctorProfileView from '../views/doctor/DoctorProfileView.vue'
 import MessagesView from '../views/messages/MessagesView.vue'
 import FavoritesView from '../views/favorites/FavoritesView.vue'
+import AdminDashboardView from '../views/admin/AdminDashboardView.vue'
 
 const routes = [
     {
         path: '/',
-        redirect: '/journey',
+        redirect: '/home',
     },
     {
         path: '/journey',
@@ -94,6 +95,15 @@ const routes = [
         path: '/login',
         name: 'login',
         component: LoginView,
+    },
+    {
+        path: '/admin',
+        redirect: '/admin/dashboard',
+    },
+    {
+        path: '/admin/dashboard',
+        name: 'adminDashboard',
+        component: AdminDashboardView,
     },
     {
         path: '/:pathMatch(.*)*',

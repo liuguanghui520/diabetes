@@ -308,7 +308,7 @@ onMounted(loadMessages)
       </div>
 
       <transition name="toast">
-        <div v-if="toastText" class="app-toast">{{ toastText }}</div>
+        <div v-if="toastText" class="app-toast" role="status" aria-live="polite">{{ toastText }}</div>
       </transition>
       <transition name="message-detail">
         <section v-if="selectedMessage" class="message-detail-mask" @click.self="selectedMessage = null">

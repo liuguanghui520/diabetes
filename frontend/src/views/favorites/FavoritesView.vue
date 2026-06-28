@@ -158,13 +158,26 @@ onMounted(loadArticles)
 
       <div v-if="showSearch" class="favorite-search">
         <SearchOutlined />
-        <input v-model="keyword" autofocus aria-label="搜索收藏的资讯" placeholder="搜索收藏的资讯" />
+        <input
+          v-model="keyword"
+          name="favorite_search"
+          autocomplete="off"
+          aria-label="搜索收藏的资讯"
+          placeholder="搜索收藏的资讯"
+        />
         <button type="button" @click="toggleSearch">取消</button>
       </div>
 
       <section class="favorite-list">
         <van-swipe-cell v-for="article in favoriteArticles" :key="article.id">
-          <article class="favorite-article" @click="openArticle(article)">
+          <article
+            class="favorite-article"
+            role="button"
+            tabindex="0"
+            @click="openArticle(article)"
+            @keydown.enter="openArticle(article)"
+            @keydown.space.prevent="openArticle(article)"
+          >
             <div class="article-meta">
               <span class="author-avatar">{{ String(article.author || '健').slice(0, 1) }}</span>
               <strong>{{ article.author }}</strong>
@@ -205,7 +218,7 @@ onMounted(loadArticles)
       </section>
 
       <transition name="toast">
-        <div v-if="toastText" class="app-toast">{{ toastText }}</div>
+        <div v-if="toastText" class="app-toast" role="status" aria-live="polite">{{ toastText }}</div>
       </transition>
     </section>
   </main>
@@ -301,7 +314,6 @@ onMounted(loadArticles)
   flex: 1;
   height: 40px;
   border: 0;
-  outline: 0;
   background: transparent;
   color: #17243a;
   font-size: 14px;

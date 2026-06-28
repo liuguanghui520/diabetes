@@ -243,7 +243,7 @@ onMounted(loadProfile)
       </div>
 
       <transition name="toast">
-        <div v-if="toastText" class="app-toast">{{ toastText }}</div>
+        <div v-if="toastText" class="app-toast" role="status" aria-live="polite">{{ toastText }}</div>
       </transition>
     </section>
   </main>
@@ -463,7 +463,6 @@ onMounted(loadProfile)
   background: transparent;
   font-size: 13px;
   font-weight: 800;
-  outline: 0;
 }
 
 .date-input::-webkit-calendar-picker-indicator {

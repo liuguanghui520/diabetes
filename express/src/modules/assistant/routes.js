@@ -148,6 +148,14 @@ export function registerAssistantRoutes(router, deps) {
       title: req.body.message.slice(0, 40)
     })
 
+    await store.createConsultationOrder?.({
+      user_id: req.user.id,
+      doctor_id: Number.isFinite(doctorId) ? doctorId : null,
+      conversation_id: conversation.id,
+      title: req.body.message.slice(0, 80),
+      priority: 'normal'
+    })
+
     await streamDifyChat({
       req,
       res,

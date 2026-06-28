@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { asyncHandler, sendOk, validate } from '../../http/response.js'
 import { authMiddleware } from '../auth/auth.js'
+import { errors } from '../../http/errors.js'
 
 const articleQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -43,10 +44,15 @@ function normalizeArticle(article) {
     id: article.id,
     title: article.title,
     summary: article.summary || article.content || '',
+    content: article.content || article.content_md || '',
     category: article.category_name || article.category || article.tag || '健康资讯',
     read_time: article.read_time || '3 分钟阅读',
     published_at: article.published_at || article.created_at || null,
-    cover_url: article.cover_url || ''
+    cover_url: article.cover_url || '',
+    view_count: article.view_count || article.views || 0,
+    like_count: article.like_count || article.likes || 0,
+    favorite_count: article.favorite_count || article.saves || 0,
+    favorited: Boolean(article.favorited)
   }
 }
 
@@ -174,12 +180,63 @@ export function registerContentRoutes(router, deps) {
     })
   }))
 
+  router.get('/articles/:id', asyncHandler(async (req, res) => {
+    const article = await deps.store.getArticleById?.(req.params.id, {
+      userId: req.user?.id || null,
+      ipAddress: req.ip || req.socket?.remoteAddress || ''
+    })
+
+    if (!article) {
+      throw errors.notFound('文章不存在')
+    }
+
+    sendOk(res, normalizeArticle(article))
+  }))
+
+  router.post('/articles/:id/favorite', auth, asyncHandler(async (req, res) => {
+    sendOk(res, await deps.store.toggleArticleFavorite(req.user.id, req.params.id))
+  }))
+
+  router.get('/doctors', asyncHandler(async (_req, res) => {
+    sendOk(res, {
+      items: await deps.store.listDoctors?.({ publishedOnly: true }) || []
+    })
+  }))
+
+  router.get('/doctors/:id', asyncHandler(async (req, res) => {
+    const doctor = await deps.store.getDoctorById(req.params.id)
+
+    if (!doctor) {
+      throw errors.notFound('医生不存在')
+    }
+
+    sendOk(res, doctor)
+  }))
+
   router.get('/plans/active', auth, asyncHandler(async (req, res) => {
     sendOk(res, await deps.store.getActivePlan(req.user.id))
   }))
 
   router.post('/checkins', auth, validate(checkinSchema), asyncHandler(async (req, res) => {
     sendOk(res, await deps.store.createCheckin(req.user.id, req.body))
+  }))
+
+  router.get('/checkins', auth, asyncHandler(async (req, res) => {
+    sendOk(res, {
+      items: await deps.store.getCheckinRecords?.(req.user.id, {
+        days: Number(req.query.days || 7)
+      }) || []
+    })
+  }))
+
+  router.get('/checkins/analysis', auth, asyncHandler(async (req, res) => {
+    sendOk(res, await deps.store.getCheckinAnalysis(req.user.id))
+  }))
+
+  router.get('/consultations', auth, asyncHandler(async (req, res) => {
+    sendOk(res, {
+      items: await deps.store.listConsultations?.({ userId: req.user.id }) || []
+    })
   }))
 
   router.get('/messages', auth, asyncHandler(async (req, res) => {

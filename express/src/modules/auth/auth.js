@@ -67,6 +67,21 @@ export function authMiddleware({ store, config }) {
   })
 }
 
+export function adminMiddleware(deps) {
+  const auth = authMiddleware(deps)
+
+  return [
+    auth,
+    asyncHandler(async (req, _res, next) => {
+      if (!['admin', 'super_admin'].includes(req.user.role)) {
+        throw errors.forbidden('需要管理员权限')
+      }
+
+      next()
+    })
+  ]
+}
+
 export function registerAuthRoutes(router, deps) {
   const { store, config } = deps
 
@@ -99,6 +114,10 @@ export function registerAuthRoutes(router, deps) {
     if (!matched) {
       throw errors.unauthorized('账号或密码错误')
     }
+
+    await store.updateLastLogin?.(user.id, {
+      last_login_ip: req.ip || req.socket?.remoteAddress || ''
+    })
 
     sendOk(res, {
       user: publicUser(user),

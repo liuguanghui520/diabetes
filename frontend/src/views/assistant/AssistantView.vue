@@ -43,7 +43,7 @@ const suggestionDrag = reactive({
 
 const suggestions = ['控糖饮食', '风险解释', '生成计划', '报告怎么看', '复查提醒']
 const activeTask = ref(suggestions[0])
-const inputPlaceholder = computed(() => `${activeTask.value}，说说你的情况...`)
+const inputPlaceholder = computed(() => `${activeTask.value}，说说你的情况…`)
 
 function showToast(text) {
   toastText.value = text
@@ -393,7 +393,7 @@ onMounted(loadLatestConversation)
             class="q-message"
             :class="item.role"
           >
-            <p>{{ item.content || '生成中...' }}</p>
+            <p>{{ item.content || '生成中…' }}</p>
             <div v-if="item.files?.length" class="message-files">
               <span v-for="file in item.files" :key="file.name">
                 <PaperClipOutlined />
@@ -401,9 +401,9 @@ onMounted(loadLatestConversation)
               </span>
             </div>
             <div v-if="item.role === 'assistant'" class="message-actions">
-              <button type="button" @click="speakText(item.content)"><SoundOutlined /></button>
-              <button type="button" @click="shareText(item.content)"><ShareAltOutlined /></button>
-              <button type="button" @click="copyText(item.content)"><CopyOutlined /></button>
+              <button type="button" aria-label="朗读回复" @click="speakText(item.content)"><SoundOutlined /></button>
+              <button type="button" aria-label="分享回复" @click="shareText(item.content)"><ShareAltOutlined /></button>
+              <button type="button" aria-label="复制回复" @click="copyText(item.content)"><CopyOutlined /></button>
             </div>
           </article>
         </section>
@@ -437,6 +437,7 @@ onMounted(loadLatestConversation)
             v-for="(file, index) in attachments"
             :key="`${file.name}-${index}`"
             type="button"
+            :aria-label="`移除附件 ${file.name}`"
             @click="removeAttachment(index)"
           >
             <PaperClipOutlined />
@@ -449,14 +450,20 @@ onMounted(loadLatestConversation)
           <button type="button" aria-label="语音" @click="handleVoiceInput">
             <AudioOutlined />
           </button>
-          <input v-model="message" aria-label="输入健康助手问题" :placeholder="inputPlaceholder" />
+          <input
+            v-model="message"
+            name="assistant_message"
+            autocomplete="off"
+            aria-label="输入健康助手问题"
+            :placeholder="inputPlaceholder"
+          />
           <button type="button" aria-label="添加文件" @click="openFilePicker">
             <PaperClipOutlined />
           </button>
           <button type="button" aria-label="拍照" @click="handleCameraUpload">
             <CameraOutlined />
           </button>
-          <button v-if="message.trim() || attachments.length" class="send" type="submit" :disabled="sending">
+          <button v-if="message.trim() || attachments.length" class="send" type="submit" aria-label="发送消息" :disabled="sending">
             <SendOutlined />
           </button>
         </form>
@@ -503,7 +510,7 @@ onMounted(loadLatestConversation)
       </transition>
 
       <transition name="toast">
-        <div v-if="toastText" class="app-toast">{{ toastText }}</div>
+        <div v-if="toastText" class="app-toast" role="status" aria-live="polite">{{ toastText }}</div>
       </transition>
     </section>
   </main>
@@ -783,7 +790,6 @@ onMounted(loadLatestConversation)
   min-width: 0;
   flex: 1;
   border: 0;
-  outline: 0;
   color: #17191d;
   font-size: 14px;
   font-weight: 800;

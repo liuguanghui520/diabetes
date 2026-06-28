@@ -1,9 +1,10 @@
 <script setup>
 import { ref } from 'vue'
 import {
-  BookOutlined,
   CalendarOutlined,
-  HeartOutlined,
+  BookOutlined,
+  RobotOutlined,
+  SolutionOutlined,
   HomeOutlined,
   UserOutlined,
 } from '@ant-design/icons-vue'
@@ -31,22 +32,22 @@ const tabs = [
     animatedIcon: 'line-md:home-twotone-alt',
   },
   {
-    key: 'health',
-    label: '健康',
-    icon: HeartOutlined,
-    animatedIcon: 'line-md:heart',
-  },
-  {
     key: 'plan',
-    label: '方案',
-    icon: CalendarOutlined,
+    label: '方案定制',
+    icon: SolutionOutlined,
     animatedIcon: 'line-md:calendar',
   },
   {
     key: 'news',
-    label: '资讯',
+    label: '健康资讯',
     icon: BookOutlined,
     animatedIcon: 'line-md:document-list',
+  },
+  {
+    key: 'assistant',
+    label: 'AI助手',
+    icon: RobotOutlined,
+    animatedIcon: 'line-md:chat-round-dots',
   },
   {
     key: 'profile',
