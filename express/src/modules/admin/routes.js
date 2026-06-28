@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { asyncHandler, sendOk, validate } from '../../http/response.js'
 import { errors } from '../../http/errors.js'
 import { adminMiddleware } from '../auth/auth.js'
+import { proxyDifySse, writeSse } from '../assistant/sse.js'
 
 const pageQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -62,6 +63,12 @@ const homeConfigSchema = z.object({
     sort_order: z.coerce.number().int().default(0),
     status: z.enum(['active', 'hidden']).default('active')
   })).default([])
+})
+
+const adminChatSchema = z.object({
+  conversation_id: z.union([z.number().int(), z.string(), z.null()]).optional(),
+  message: z.string().min(1).max(4000),
+  context: z.object({}).catchall(z.any()).default({})
 })
 
 function adminAuth(deps) {
@@ -244,5 +251,91 @@ export function registerAdminRoutes(router, deps) {
     const slots = await deps.store.replaceHomeConfig?.(req.body.slots, req.user.id) || req.body.slots
     await logAdmin(req, deps, 'home_config.update', 'home_operation_config', null, before, slots)
     sendOk(res, { slots })
+  }))
+
+  router.post('/admin/assistant/chat', auth, validate(adminChatSchema), asyncHandler(async (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
+    res.setHeader('Cache-Control', 'no-cache, no-transform')
+    res.setHeader('Connection', 'keep-alive')
+    res.flushHeaders?.()
+
+    let conversation = req.body.conversation_id
+      ? await deps.store.findConversation(req.user.id, req.body.conversation_id)
+      : null
+
+    if (!conversation) {
+      conversation = await deps.store.createConversation({
+        user_id: req.user.id,
+        app_type: 'assistant',
+        title: `管理助手：${req.body.message.slice(0, 24)}`,
+        dify_conversation_id: null
+      })
+    }
+
+    await deps.store.createMessage({
+      conversation_id: conversation.id,
+      role: 'user',
+      content: req.body.message,
+      metadata: {
+        app_type: 'admin',
+        context: req.body.context
+      }
+    })
+
+    let fullText = ''
+    let difyConversationId = conversation.dify_conversation_id || ''
+    let difyMessageId = null
+
+    try {
+      const difyResponse = await deps.difyClient.chatStream({
+        appType: 'admin',
+        query: req.body.message,
+        inputs: {
+          user_id: String(req.user.id),
+          role: req.user.role,
+          app_type: 'admin',
+          context: req.body.context
+        },
+        conversationId: difyConversationId,
+        user: req.user.id
+      })
+
+      await proxyDifySse({
+        response: difyResponse,
+        res,
+        onDelta(delta) {
+          fullText += delta
+        },
+        async onEnd(event) {
+          difyConversationId = event.conversation_id || difyConversationId
+          difyMessageId = event.message_id || event.id || null
+          await deps.store.updateConversation(conversation.id, {
+            dify_conversation_id: difyConversationId,
+            title: conversation.title
+          })
+          await deps.store.createMessage({
+            conversation_id: conversation.id,
+            role: 'assistant',
+            content: fullText || '管理员助手已处理。',
+            dify_message_id: difyMessageId,
+            metadata: {
+              app_type: 'admin',
+              dify_conversation_id: difyConversationId
+            }
+          })
+          writeSse(res, 'message_end', {
+            conversation_id: conversation.id,
+            dify_conversation_id: difyConversationId,
+            dify_message_id: difyMessageId
+          })
+        }
+      })
+    } catch (error) {
+      writeSse(res, 'error', {
+        message: error.message || '管理员助手暂时不可用'
+      })
+    } finally {
+      res.end()
+    }
   }))
 }

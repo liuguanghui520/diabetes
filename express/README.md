@@ -79,8 +79,12 @@ DB_CONNECT_ON_START=false
 
 DIFY_BASE_URL=http://127.0.0.1
 DIFY_RISK_API_KEY=app-xxx
+DIFY_PLAN_API_KEY=app-xxx
+DIFY_CHECKIN_API_KEY=app-xxx
+DIFY_REPORT_API_KEY=app-xxx
 DIFY_ASSISTANT_API_KEY=app-xxx
 DIFY_DOCTOR_API_KEY=app-xxx
+DIFY_ADMIN_API_KEY=app-xxx
 INTERNAL_DIFY_TOKEN=change-me
 ```
 
@@ -155,9 +159,12 @@ npm run seed:admin -- --username admin --password <password>
 | GET | `/api/doctors/:id` | 医生详情 |
 | POST | `/api/doctors/:doctorId/chat` | 医生咨询 SSE，并创建咨询工单 |
 | GET | `/api/plans/active` | 当前生活方案 |
+| POST | `/api/plans/generate` | 调用 WF-PLAN 并落库生活方案 |
 | POST | `/api/checkins` | 饮食/运动等打卡 |
 | GET | `/api/checkins` | 打卡记录 |
-| GET | `/api/checkins/analysis` | AI 打卡分析摘要 |
+| GET | `/api/checkins/analysis` | 本地打卡分析摘要 |
+| POST | `/api/checkins/analysis` | 调用 WF-CHECKIN 并落库健康分析报告 |
+| POST | `/api/reports/interpret` | 调用 WF-REPORT 并代理返回报告解读 |
 
 管理员接口：
 
@@ -176,6 +183,7 @@ npm run seed:admin -- --username admin --password <password>
 | PUT | `/api/admin/users/:id/status` | 用户启用、禁用或锁定 |
 | GET | `/api/admin/consultations` | 咨询工单列表 |
 | GET | `/api/admin/dify-run-logs` | Dify 运行日志 |
+| POST | `/api/admin/assistant/chat` | 管理员助手 Chatflow SSE |
 
 内部只读接口：
 
@@ -186,6 +194,7 @@ npm run seed:admin -- --username admin --password <password>
 | GET | `/internal/dify/users/:userId/checkins/summary` | 打卡统计 |
 | GET | `/internal/dify/articles/recommend` | 资讯候选 |
 | GET | `/internal/dify/doctors/:doctorId` | 医生资料 |
+| GET | `/internal/dify/admin/summary` | 管理员助手只读后台摘要 |
 
 ## Dify 接入
 
@@ -194,7 +203,11 @@ npm run seed:admin -- --username admin --password <password>
 当前代码已实现：
 
 - WF-RISK：`POST /api/risk-assessments` 中调用 `/v1/workflows/run`，`response_mode=blocking`。
+- WF-PLAN：`POST /api/plans/generate` 中调用 `/v1/workflows/run`，落 `lifestyle_plan` + `plan_task`。
+- WF-CHECKIN：`POST /api/checkins/analysis` 中调用 `/v1/workflows/run`，落 `health_analysis_report`。
+- WF-REPORT：`POST /api/reports/interpret` 中调用 `/v1/workflows/run`，当前只代理返回，不落库。
 - CF-ASSISTANT：`POST /api/assistant/chat` 中调用 `/v1/chat-messages`，`response_mode=streaming`。
+- CF-ADMIN：`POST /api/admin/assistant/chat` 中调用 `/v1/chat-messages`，用于管理员自然语言查询和维护草案。
 - SSE 转换：Dify `message.answer` 会转为前端 `event: message` + `{ "delta": "..." }`；Dify `message_end` 会转为本地 `conversation_id` 和 `dify_conversation_id`。
 - Dify 不写核心业务表。它只返回结构化结果，Express 校验后落库。
 

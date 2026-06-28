@@ -4,6 +4,46 @@ function one(result) {
   return result.rows[0] || null
 }
 
+async function transaction(pool, handler) {
+  const client = await pool.connect()
+
+  try {
+    await client.query('begin')
+    const result = await handler(client)
+    await client.query('commit')
+    return result
+  } catch (error) {
+    await client.query('rollback')
+    throw error
+  } finally {
+    client.release()
+  }
+}
+
+function addDays(date, days) {
+  const next = new Date(date)
+  next.setDate(next.getDate() + days)
+  return next
+}
+
+function toDateOnly(date) {
+  return date.toISOString().slice(0, 10)
+}
+
+function normalizePlanTask(task, index = 0) {
+  return {
+    task_type: task.task_type || task.category || 'review',
+    title: task.title || '健康管理任务',
+    description: task.description || task.desc || task.content || '',
+    target_value: task.target_value ?? task.value ?? null,
+    unit: task.unit || null,
+    target_time: task.target_time || task.time || null,
+    weekdays: task.weekdays || null,
+    sort_order: task.sort_order ?? index,
+    metadata: task.metadata || {}
+  }
+}
+
 export function createSqlStore(pool) {
   return {
     async findUserByAccount(account) {
@@ -344,7 +384,7 @@ export function createSqlStore(pool) {
       return {
         profile: await this.getProfile(userId),
         latest_risk: await this.getLatestRisk(userId),
-        latest_plan: null
+        latest_plan: await this.getActivePlan(userId)
       }
     },
 
@@ -362,11 +402,36 @@ export function createSqlStore(pool) {
       }
     },
 
-    async getCheckinSummary() {
+    async getCheckinSummary(userId, query = {}) {
+      const days = Math.max(1, Math.min(Number(query.days || 7), 31))
+      const records = await this.getCheckinRecords(userId, { days })
+      const today = new Date()
+      const start = toDateOnly(addDays(today, -(days - 1)))
+      const end = toDateOnly(today)
+      const completionTotal = records.reduce((total, record) => (
+        total + Number(record.completion_rate || 0)
+      ), 0)
+      const items = records.flatMap((record) => (record.items || []).map((item) => ({
+        ...item,
+        checkin_date: record.checkin_date
+      })))
+      const byType = items.reduce((acc, item) => {
+        const key = item.task_type || 'review'
+        acc[key] = (acc[key] || 0) + 1
+        return acc
+      }, {})
+
       return {
-        period: null,
-        completion_rate: null,
-        items: []
+        period: {
+          start,
+          end,
+          days
+        },
+        completion_rate: Math.round(completionTotal / days),
+        record_count: records.length,
+        completed_count: items.length,
+        by_type: byType,
+        items
       }
     },
 
@@ -519,6 +584,73 @@ export function createSqlStore(pool) {
       }
     },
 
+    async createPlan(input) {
+      const tasks = Array.isArray(input.tasks) ? input.tasks : []
+
+      return transaction(pool, async (client) => {
+        if (input.status === 'active') {
+          await client.query(
+            `update lifestyle_plan
+             set status = 'archived', updated_at = current_timestamp
+             where user_id = $1 and status = 'active'`,
+            [input.user_id]
+          )
+        }
+
+        const planResult = await client.query(
+          `insert into lifestyle_plan
+           (user_id, risk_assessment_id, title, goal_summary, status, start_date,
+            end_date, preferences, plan_json, dify_workflow_run_id, created_at, updated_at)
+           values
+           ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10, current_timestamp, current_timestamp)
+           returning *`,
+          [
+            input.user_id,
+            input.risk_assessment_id || null,
+            input.title || '个性化生活方案',
+            input.goal_summary || input.summary || null,
+            input.status || 'active',
+            input.start_date || null,
+            input.end_date || null,
+            JSON.stringify(input.preferences || {}),
+            JSON.stringify(input.plan_json || input),
+            input.dify_workflow_run_id || null
+          ]
+        )
+        const plan = one(planResult)
+        const insertedTasks = []
+
+        for (const [index, task] of tasks.entries()) {
+          const normalized = normalizePlanTask(task, index)
+          const taskResult = await client.query(
+            `insert into plan_task
+             (plan_id, task_type, title, description, target_value, unit, target_time,
+              weekdays, sort_order, metadata, created_at)
+             values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, current_timestamp)
+             returning *`,
+            [
+              plan.id,
+              normalized.task_type,
+              normalized.title,
+              normalized.description,
+              normalized.target_value,
+              normalized.unit,
+              normalized.target_time,
+              normalized.weekdays,
+              normalized.sort_order,
+              JSON.stringify(normalized.metadata || {})
+            ]
+          )
+          insertedTasks.push(one(taskResult))
+        }
+
+        return {
+          ...plan,
+          tasks: insertedTasks
+        }
+      })
+    },
+
     async createCheckin(userId, input) {
       const date = input.recorded_at
         ? new Date(input.recorded_at).toISOString().slice(0, 10)
@@ -595,6 +727,27 @@ export function createSqlStore(pool) {
           ? '继续保持饮食多样性和运动适度，避免过度疲劳，并定期复查血糖。'
           : '设置手机提醒，优先落实早餐和晚餐记录；运动从饭后 15-20 分钟轻走开始。'
       }
+    },
+
+    async createHealthAnalysisReport(input) {
+      const result = await pool.query(
+        `insert into health_analysis_report
+         (user_id, period_start, period_end, completion_rate, summary, advice,
+          analysis_json, dify_workflow_run_id, created_at)
+         values ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, current_timestamp)
+         returning *`,
+        [
+          input.user_id,
+          input.period_start,
+          input.period_end,
+          input.completion_rate ?? null,
+          input.summary || input.evaluation || null,
+          input.advice || null,
+          JSON.stringify(input.analysis_json || input),
+          input.dify_workflow_run_id || null
+        ]
+      )
+      return one(result)
     },
 
     async createConsultationOrder(input) {

@@ -7,6 +7,7 @@ import { registerHealthRoutes } from './modules/health/routes.js'
 import { registerProfileRoutes } from './modules/profile/routes.js'
 import { registerRiskRoutes } from './modules/risk/routes.js'
 import { registerAssistantRoutes } from './modules/assistant/routes.js'
+import { registerWorkflowRoutes } from './modules/workflow/routes.js'
 import { registerInternalRoutes } from './modules/internal/routes.js'
 import { registerContentRoutes } from './modules/content/routes.js'
 import { registerAdminRoutes } from './modules/admin/routes.js'
@@ -32,6 +33,7 @@ export async function createApp(config, overrides = {}) {
   registerProfileRoutes(api, deps)
   registerRiskRoutes(api, deps)
   registerAssistantRoutes(api, deps)
+  registerWorkflowRoutes(api, deps)
   registerContentRoutes(api, deps)
   registerAdminRoutes(api, deps)
   app.use('/api', api)

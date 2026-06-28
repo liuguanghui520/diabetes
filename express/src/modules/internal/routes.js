@@ -40,4 +40,35 @@ export function registerInternalRoutes(app, deps) {
 
     sendOk(res, doctor)
   }))
+
+  app.get('/internal/dify/admin/summary', auth, asyncHandler(async (req, res) => {
+    const [users, doctors, consultations, logs] = await Promise.all([
+      deps.store.listAdminUsers?.({
+        page: Number(req.query.page || 1),
+        pageSize: Math.min(Number(req.query.pageSize || 20), 50),
+        keyword: req.query.keyword || ''
+      }),
+      deps.store.listAdminDoctors?.({
+        page: 1,
+        pageSize: 50,
+        keyword: req.query.keyword || ''
+      }),
+      deps.store.listConsultations?.({
+        status: req.query.status || null
+      }),
+      deps.store.listDifyLogs?.({
+        page: 1,
+        pageSize: 10
+      })
+    ])
+
+    sendOk(res, {
+      users,
+      doctors,
+      consultations,
+      latest_dify_logs: logs?.items || [],
+      readonly: true,
+      note: 'Dify 管理员 Chatflow 只能读取摘要；写操作必须回到 Express 管理接口并经管理员确认。'
+    })
+  }))
 }

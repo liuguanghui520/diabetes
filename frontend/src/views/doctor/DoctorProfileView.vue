@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   CheckCircleFilled,
@@ -9,14 +9,26 @@ import {
   StarFilled,
 } from '@ant-design/icons-vue'
 import { doctors } from '../../data/doctors'
+import { apiGet } from '../../api/request'
 
 const route = useRoute()
 const router = useRouter()
+const remoteDoctor = ref(null)
 
 const doctor = computed(() => {
   const id = Number(route.params.id || 0)
-  return doctors.find((item) => item.id === id) || doctors[0]
+  return remoteDoctor.value || doctors.find((item) => item.id === id) || doctors[0]
 })
+
+const avatarText = computed(() => {
+  return doctor.value.avatar || String(doctor.value.name || '医').slice(0, 1)
+})
+
+const goodAtText = computed(() => {
+  return doctor.value.goodAt || doctor.value.specialty || doctor.value.intro || '糖尿病风险筛查、血糖波动、复查指标解读'
+})
+
+const hospitalText = computed(() => doctor.value.hospital || doctor.value.department || '慢病管理门诊')
 
 function startChat() {
   router.push({
@@ -26,6 +38,28 @@ function startChat() {
     },
   })
 }
+
+async function loadDoctor() {
+  try {
+    const result = await apiGet(`/api/doctors/${route.params.id}`, { auth: false })
+    remoteDoctor.value = {
+      ...result.data,
+      avatar: String(result.data.name || '医').slice(0, 1),
+      license: result.data.license_no || '执业信息由管理员维护',
+      goodAt: result.data.specialty || result.data.intro || '',
+      hospital: result.data.profile_md || result.data.department || '',
+      consultCount: result.data.consult_count || '0',
+      score: result.data.score || '4.8',
+      status: result.data.online_status === 'online' ? '在线' : '离线',
+      tags: (result.data.specialty || result.data.department || '糖尿病').split(/[、,，\\s]+/).filter(Boolean).slice(0, 4),
+      tone: 'blue',
+    }
+  } catch {
+    remoteDoctor.value = null
+  }
+}
+
+onMounted(loadDoctor)
 </script>
 
 <template>
@@ -40,7 +74,13 @@ function startChat() {
       </header>
 
       <section class="doctor-hero">
-        <span class="profile-avatar" :class="doctor.tone">{{ doctor.avatar }}</span>
+        <span
+          class="profile-avatar"
+          :class="doctor.tone"
+          :style="doctor.avatar_url ? { backgroundImage: `url(${doctor.avatar_url})` } : {}"
+        >
+          <span v-if="!doctor.avatar_url">{{ avatarText }}</span>
+        </span>
         <div>
           <h1>{{ doctor.name }}</h1>
           <p>{{ doctor.department }} · {{ doctor.title }}</p>
@@ -54,7 +94,7 @@ function startChat() {
           <span>用户评分</span>
         </div>
         <div>
-          <strong>{{ doctor.consultCount }}</strong>
+          <strong>{{ doctor.consultCount || '0' }}</strong>
           <span>咨询量</span>
         </div>
         <div>
@@ -65,9 +105,9 @@ function startChat() {
 
       <section class="profile-section">
         <h2>擅长方向</h2>
-        <p>{{ doctor.goodAt }}</p>
+        <p>{{ goodAtText }}</p>
         <div class="tag-list">
-          <span v-for="tag in doctor.tags" :key="tag">{{ tag }}</span>
+          <span v-for="tag in doctor.tags || []" :key="tag">{{ tag }}</span>
         </div>
       </section>
 
@@ -76,7 +116,7 @@ function startChat() {
         <button type="button" class="info-row">
           <MedicineBoxOutlined />
           <span>
-            <strong>{{ doctor.hospital }}</strong>
+            <strong>{{ hospitalText }}</strong>
             <small>{{ doctor.department }}持续管理与复查建议</small>
           </span>
         </button>
@@ -164,6 +204,8 @@ function startChat() {
   border-radius: 50%;
   color: #fff;
   background: linear-gradient(135deg, #1677ff, #00b8ff);
+  background-position: center;
+  background-size: cover;
   font-size: 24px;
   font-weight: 950;
 }

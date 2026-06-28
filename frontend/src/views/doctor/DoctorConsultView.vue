@@ -10,7 +10,7 @@ import {
   SendOutlined,
   SmileOutlined,
 } from '@ant-design/icons-vue'
-import { authorizedFetch } from '../../api/request'
+import { apiGet, authorizedFetch } from '../../api/request'
 import { doctorFilters, doctors } from '../../data/doctors'
 
 const router = useRouter()
@@ -27,6 +27,7 @@ const filterStripRef = ref(null)
 const doctorFileInput = ref(null)
 const doctorFileAccept = ref('.pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg')
 const pendingFiles = ref([])
+const doctorList = ref(doctors)
 const threads = reactive({})
 const readDoctorIds = ref(new Set())
 const filterDrag = reactive({
@@ -38,20 +39,21 @@ const filterDrag = reactive({
 
 const filters = doctorFilters
 
-const currentDoctor = computed(() => doctors.find((item) => item.id === activeDoctor.value) || doctors[0])
+const currentDoctor = computed(() => doctorList.value.find((item) => item.id === activeDoctor.value) || doctorList.value[0] || doctors[0])
 
 const filteredDoctors = computed(() => {
   const query = keyword.value.trim().toLowerCase()
 
-  return doctors.filter((doctor) => {
-    const matchFilter = activeFilter.value === '全部' || doctor.tags.includes(activeFilter.value)
+  return doctorList.value.filter((doctor) => {
+    const tags = doctor.tags || []
+    const matchFilter = activeFilter.value === '全部' || tags.includes(activeFilter.value)
     const haystack = [
       doctor.name,
       doctor.title,
       doctor.department,
       doctor.hospital,
       doctor.last,
-      ...doctor.tags,
+      ...tags,
     ].join(' ').toLowerCase()
     const matchKeyword = !query || haystack.includes(query)
 
@@ -88,7 +90,7 @@ function goBack() {
 
 function getThread(id) {
   if (!threads[id]) {
-    const doctor = doctors.find((item) => item.id === id) || doctors[0]
+    const doctor = doctorList.value.find((item) => item.id === id) || doctors[0]
     threads[id] = [
       { role: 'time', content: '刚刚' },
       { role: 'assistant', content: doctor.greeting },
@@ -275,9 +277,44 @@ function handleDoctorFileChange(event) {
   showToast(`已添加 ${files.length} 个附件。`)
 }
 
+function normalizeDoctor(item, index) {
+  const specialty = item.specialty || item.intro || '糖尿病慢病管理'
+  const tags = specialty.split(/[、,，\\s]+/).filter(Boolean).slice(0, 4)
+
+  return {
+    ...item,
+    avatar: String(item.name || '医').slice(0, 1),
+    hospital: item.profile_md || item.department || '慢病管理门诊',
+    license: item.license_no || '执业信息由管理员维护',
+    consultCount: item.consult_count || '0',
+    goodAt: specialty,
+    status: item.online_status === 'offline' ? '离线' : '在线',
+    score: item.score || '4.8',
+    time: index === 0 ? '刚刚' : '今天',
+    unread: 0,
+    tags: tags.length ? tags : ['糖尿病'],
+    last: item.intro || '可以把近期血糖、复查指标和问题发来，我先帮你整理重点。',
+    greeting: item.greeting || `你好，我是${item.name || '医生'}咨询助手。可以帮你整理复查、指标和生活管理问题。`,
+    tone: ['blue', 'green', 'orange', 'purple'][index % 4],
+  }
+}
+
+async function loadDoctors() {
+  try {
+    const result = await apiGet('/api/doctors', { auth: false })
+    const items = result.data?.items || []
+    if (items.length) {
+      doctorList.value = items.map(normalizeDoctor)
+    }
+  } catch {
+    doctorList.value = doctors
+  }
+}
+
 onMounted(() => {
+  loadDoctors()
   const doctorId = Number(route.query.doctor || 0)
-  const doctor = doctors.find((item) => item.id === doctorId)
+  const doctor = doctorList.value.find((item) => item.id === doctorId)
   if (doctor) {
     openChat(doctor)
   }

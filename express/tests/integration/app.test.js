@@ -169,6 +169,53 @@ describe('Express API', () => {
     expect(Array.isArray(messages.body.data.list)).toBe(true)
   })
 
+  it('runs plan, checkin analysis and report workflows', async () => {
+    const { app, difyClient } = await createTestContext()
+    const token = await registerAndLogin(request, app)
+
+    const plan = await request(app)
+      .post('/api/plans/generate')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        preferences: {
+          goal: '控糖和减重'
+        }
+      })
+    expect(plan.status).toBe(200)
+    expect(plan.body.data.plan.title).toBeTruthy()
+    expect(plan.body.data.plan.tasks.length).toBeGreaterThan(0)
+
+    await request(app)
+      .post('/api/checkins')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        type: 'exercise',
+        value: 1,
+        unit: '次',
+        detail_text: '饭后轻走'
+      })
+
+    const analysis = await request(app)
+      .post('/api/checkins/analysis')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ days: 7 })
+    expect(analysis.status).toBe(200)
+    expect(analysis.body.data.report_id).toBeTruthy()
+    expect(analysis.body.data.workflow_run_id).toBe('mock_checkin_workflow_run_id')
+
+    const report = await request(app)
+      .post('/api/reports/interpret')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        report_text: '空腹血糖 6.4 mmol/L，糖化血红蛋白 6.1%。'
+      })
+    expect(report.status).toBe(200)
+    expect(report.body.data.status).toBe('pending_confirm')
+    expect(difyClient.calls.workflows.map((item) => item.appCode)).toEqual(
+      expect.arrayContaining(['plan', 'checkin', 'report'])
+    )
+  })
+
   it('proxies doctor consultation SSE', async () => {
     const { app, difyClient } = await createTestContext()
     const token = await registerAndLogin(request, app)

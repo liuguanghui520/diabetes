@@ -16,6 +16,11 @@ export function createMemoryStore() {
     conversations: [],
     messages: [],
     difyLogs: [],
+    plans: [],
+    planTasks: [],
+    checkinRecords: [],
+    checkinItems: [],
+    analysisReports: [],
     doctors: [],
     articles: [],
     diabetesTypes: [],
@@ -33,6 +38,11 @@ export function createMemoryStore() {
     conversations: 1,
     messages: 1,
     difyLogs: 1,
+    plans: 1,
+    planTasks: 1,
+    checkinRecords: 1,
+    checkinItems: 1,
+    analysisReports: 1,
     doctors: 1,
     articles: 1,
     consultations: 1,
@@ -251,7 +261,7 @@ export function createMemoryStore() {
       return {
         profile: await this.getProfile(userId),
         latest_risk: await this.getLatestRisk(userId),
-        latest_plan: null
+        latest_plan: await this.getActivePlan(userId)
       }
     },
 
@@ -263,11 +273,36 @@ export function createMemoryStore() {
       }
     },
 
-    async getCheckinSummary() {
+    async getCheckinSummary(userId, { days = 7 } = {}) {
+      const finalDays = Math.max(1, Math.min(Number(days || 7), 31))
+      const records = await this.getCheckinRecords(userId, { days: finalDays })
+      const today = new Date()
+      const startDate = new Date(today)
+      startDate.setDate(startDate.getDate() - (finalDays - 1))
+      const items = records.flatMap((record) => (record.items || []).map((item) => ({
+        ...item,
+        checkin_date: record.checkin_date
+      })))
+      const byType = items.reduce((acc, item) => {
+        const key = item.task_type || item.type || 'review'
+        acc[key] = (acc[key] || 0) + 1
+        return acc
+      }, {})
+      const completionTotal = records.reduce((total, record) => (
+        total + Number(record.completion_rate || 0)
+      ), 0)
+
       return {
-        period: null,
-        completion_rate: null,
-        items: []
+        period: {
+          start: startDate.toISOString().slice(0, 10),
+          end: today.toISOString().slice(0, 10),
+          days: finalDays
+        },
+        completion_rate: Math.round(completionTotal / finalDays),
+        record_count: records.length,
+        completed_count: items.length,
+        by_type: byType,
+        items: clone(items)
       }
     },
 
@@ -382,6 +417,26 @@ export function createMemoryStore() {
     },
 
     async getActivePlan(userId) {
+      const plan = state.plans
+        .filter((item) => item.user_id === Number(userId) && item.status === 'active')
+        .sort((left, right) => new Date(right.updated_at) - new Date(left.updated_at))[0]
+
+      if (plan) {
+        const tasks = state.planTasks
+          .filter((task) => task.plan_id === plan.id)
+          .sort((left, right) => left.sort_order - right.sort_order || left.id - right.id)
+        return clone({
+          ...plan,
+          tasks: tasks.map((task) => ({
+            ...task,
+            category: task.task_type,
+            target: [task.target_value, task.unit].filter(Boolean).join('') || task.unit || '1次',
+            desc: task.description,
+            time: task.target_time
+          }))
+        })
+      }
+
       const latestRisk = await this.getLatestRisk(userId)
 
       return {
@@ -412,17 +467,123 @@ export function createMemoryStore() {
       }
     },
 
+    async createPlan(input) {
+      if ((input.status || 'active') === 'active') {
+        state.plans
+          .filter((plan) => plan.user_id === Number(input.user_id) && plan.status === 'active')
+          .forEach((plan) => {
+            plan.status = 'archived'
+            plan.updated_at = now()
+          })
+      }
+
+      const plan = {
+        id: counters.plans,
+        user_id: Number(input.user_id),
+        risk_assessment_id: input.risk_assessment_id || null,
+        title: input.title || '个性化生活方案',
+        goal_summary: input.goal_summary || input.summary || '',
+        status: input.status || 'active',
+        start_date: input.start_date || null,
+        end_date: input.end_date || null,
+        preferences: input.preferences || {},
+        plan_json: input.plan_json || input,
+        dify_workflow_run_id: input.dify_workflow_run_id || null,
+        created_at: now(),
+        updated_at: now()
+      }
+      counters.plans += 1
+      state.plans.push(plan)
+
+      const tasks = (input.tasks || []).map((task, index) => {
+        const item = {
+          id: counters.planTasks,
+          plan_id: plan.id,
+          task_type: task.task_type || task.category || 'review',
+          title: task.title || '健康管理任务',
+          description: task.description || task.desc || task.content || '',
+          target_value: task.target_value ?? task.value ?? null,
+          unit: task.unit || null,
+          target_time: task.target_time || task.time || null,
+          weekdays: task.weekdays || null,
+          sort_order: task.sort_order ?? index,
+          metadata: task.metadata || {},
+          created_at: now()
+        }
+        counters.planTasks += 1
+        state.planTasks.push(item)
+        return item
+      })
+
+      return clone({
+        ...plan,
+        tasks
+      })
+    },
+
     async createCheckin(userId, input) {
-      return {
-        id: `checkin-${Date.now()}`,
-        user_id: Number(userId),
-        ...input,
+      const date = input.recorded_at
+        ? new Date(input.recorded_at).toISOString().slice(0, 10)
+        : new Date().toISOString().slice(0, 10)
+      let record = state.checkinRecords.find((item) => (
+        item.user_id === Number(userId) && item.checkin_date === date
+      ))
+
+      if (!record) {
+        record = {
+          id: counters.checkinRecords,
+          user_id: Number(userId),
+          plan_id: input.plan_id || null,
+          checkin_date: date,
+          completion_rate: 0,
+          created_at: now(),
+          updated_at: now()
+        }
+        counters.checkinRecords += 1
+        state.checkinRecords.push(record)
+      }
+
+      const item = {
+        id: counters.checkinItems,
+        checkin_record_id: record.id,
+        plan_task_id: input.plan_task_id || null,
+        task_type: input.type || input.task_type || 'review',
+        actual_value: input.value === undefined ? 1 : Number.parseFloat(input.value) || 1,
+        unit: input.unit || null,
+        status: 'done',
+        detail_text: input.detail_text || null,
+        metadata: {
+          recorded_at: input.recorded_at || null
+        },
         created_at: now()
+      }
+      counters.checkinItems += 1
+      state.checkinItems.push(item)
+      record.completion_rate = Math.min(100, Math.max(Number(record.completion_rate || 0), 100))
+      record.updated_at = now()
+
+      return {
+        record: clone(record),
+        item: clone(item)
       }
     },
 
-    async getCheckinRecords() {
-      return []
+    async getCheckinRecords(userId, { days = 7 } = {}) {
+      const threshold = new Date()
+      threshold.setDate(threshold.getDate() - (Math.max(1, Number(days || 7)) - 1))
+      const thresholdText = threshold.toISOString().slice(0, 10)
+
+      return clone(state.checkinRecords
+        .filter((record) => (
+          record.user_id === Number(userId) && record.checkin_date >= thresholdText
+        ))
+        .sort((left, right) => right.checkin_date.localeCompare(left.checkin_date))
+        .map((record) => ({
+          ...record,
+          items: state.checkinItems
+            .filter((item) => item.checkin_record_id === record.id)
+            .sort((left, right) => new Date(left.created_at) - new Date(right.created_at))
+        })))
     },
 
     async getCheckinAnalysis() {
@@ -434,6 +595,17 @@ export function createMemoryStore() {
         evaluation: '您的饮食和运动打卡完成情况良好，尤其是在运动方面表现突出。',
         advice: '继续保持良好的饮食和运动习惯，注意饮食多样性和运动适度。'
       }
+    },
+
+    async createHealthAnalysisReport(input) {
+      const report = {
+        id: counters.analysisReports,
+        ...input,
+        created_at: now()
+      }
+      counters.analysisReports += 1
+      state.analysisReports.push(report)
+      return clone(report)
     },
 
     async createConsultationOrder(input) {

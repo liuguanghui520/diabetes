@@ -25,7 +25,7 @@ const showSettings = ref(false)
 const privacyAgreed = ref(true)
 const smartAnalysisEnabled = ref(true)
 
-const displayName = computed(() => user.value?.nickname || user.value?.username || '测试同学')
+const displayName = computed(() => user.value?.nickname || user.value?.username || '未登录')
 const completion = computed(() => {
   return profile.value?.completion_rate || profile.value?.profile?.completion_rate || 0
 })

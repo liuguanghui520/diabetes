@@ -16,7 +16,7 @@ const toastText = ref('')
 const saving = ref(false)
 
 const form = reactive({
-  nickname: storedUser.value?.nickname || storedUser.value?.username || '测试同学',
+  nickname: storedUser.value?.nickname || storedUser.value?.username || '',
   birth_date: '',
   gender: '',
   hometown: '',
@@ -72,7 +72,7 @@ function goBack() {
 function applyProfile(data = {}) {
   const profile = data.profile || data
   Object.assign(form, {
-    nickname: profile.nickname || storedUser.value?.nickname || storedUser.value?.username || '测试同学',
+    nickname: profile.nickname || storedUser.value?.nickname || storedUser.value?.username || '',
     birth_date: profile.birth_date || '',
     gender: profile.gender || '',
     hometown: profile.hometown || '',
@@ -95,7 +95,7 @@ async function saveProfile() {
 
   try {
     await apiPut('/api/profile', {
-      nickname: form.nickname.trim() || '测试同学',
+      nickname: form.nickname.trim() || storedUser.value?.username || '',
       birth_date: form.birth_date || null,
       gender: form.gender || null,
       hometown: form.hometown.trim() || null,
@@ -132,7 +132,7 @@ onMounted(loadProfile)
           </div>
           <div>
             <p>基础资料</p>
-            <h1>{{ form.nickname || '测试同学' }}</h1>
+            <h1>{{ form.nickname || '未设置昵称' }}</h1>
             <small>出生日期和性别会参与糖尿病风险评分，健康指标放在健康档案里。</small>
           </div>
         </section>

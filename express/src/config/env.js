@@ -82,7 +82,8 @@ export function loadEnv(cliArgs = parseCliArgs()) {
         checkin: process.env.DIFY_CHECKIN_API_KEY || '',
         report: process.env.DIFY_REPORT_API_KEY || '',
         assistant: process.env.DIFY_ASSISTANT_API_KEY || '',
-        doctor: process.env.DIFY_DOCTOR_API_KEY || ''
+        doctor: process.env.DIFY_DOCTOR_API_KEY || '',
+        admin: process.env.DIFY_ADMIN_API_KEY || ''
       }
     },
     internalDifyToken: process.env.INTERNAL_DIFY_TOKEN || 'change-me'

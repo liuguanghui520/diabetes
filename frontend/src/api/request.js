@@ -4,7 +4,7 @@ const TOKEN_KEY = 'diabetesAuthToken'
 const USER_KEY = 'diabetesAuthUser'
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
-const API_MODE = String(import.meta.env.VITE_API_MODE || 'mock').toLowerCase()
+const API_MODE = String(import.meta.env.VITE_API_MODE || 'real').toLowerCase()
 
 export class ApiRequestError extends Error {
     constructor(message, options = {}) {

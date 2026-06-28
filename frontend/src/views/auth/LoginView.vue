@@ -143,7 +143,7 @@ async function handleSubmit() {
 }
 
 function openPhoneLogin() {
-  showNotice('当前演示使用账号密码登录，测试账号可一键填入。')
+  showNotice(isMock ? '当前演示使用账号密码登录，测试账号可一键填入。' : '请使用已注册账号和密码登录。')
 }
 
 function enterGuestMode() {

@@ -3,17 +3,24 @@ import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   AudioOutlined,
+  BarChartOutlined,
   CameraOutlined,
+  ClockCircleOutlined,
   CopyOutlined,
+  FileDoneOutlined,
   HistoryOutlined,
+  HeartOutlined,
   LeftOutlined,
+  MessageOutlined,
   PaperClipOutlined,
   PlusOutlined,
   SendOutlined,
   ShareAltOutlined,
   SoundOutlined,
+  UserOutlined,
 } from '@ant-design/icons-vue'
-import { authorizedFetch } from '../../api/request'
+import { apiGet, authorizedFetch } from '../../api/request'
+import LiquidTabBar from '../../components/navigation/LiquidTabBar.vue'
 
 const HISTORY_KEY = 'diafitAssistantConversations'
 const welcomeMessage = {
@@ -32,7 +39,9 @@ const fileAccept = ref('.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg')
 const suggestionRowRef = ref(null)
 const attachments = ref([])
 const showHistory = ref(false)
+const hasStarted = ref(false)
 const conversationHistory = ref([])
+const loadingHistory = ref(false)
 const messages = ref([{ ...welcomeMessage }])
 const suggestionDrag = reactive({
   active: false,
@@ -42,6 +51,12 @@ const suggestionDrag = reactive({
 })
 
 const suggestions = ['控糖饮食', '风险解释', '生成计划', '报告怎么看', '复查提醒']
+const featureItems = [
+  { icon: MessageOutlined, tone: 'blue', title: '糖尿病信息问答', desc: '了解控糖饮食、复查指标和日常管理' },
+  { icon: BarChartOutlined, tone: 'purple', title: '糖尿病风险解释', desc: '结合档案和评估结果梳理风险重点' },
+  { icon: FileDoneOutlined, tone: 'green', title: '生活方案生成', desc: '把建议拆成饮食、运动和复查任务' },
+  { icon: UserOutlined, tone: 'yellow', title: '个人信息管理', desc: '记录并追踪健康档案和关键指标' },
+]
 const activeTask = ref(suggestions[0])
 const inputPlaceholder = computed(() => `${activeTask.value}，说说你的情况…`)
 
@@ -70,8 +85,20 @@ function writeHistory(list) {
   localStorage.setItem(HISTORY_KEY, JSON.stringify(list.slice(0, 12)))
 }
 
-function refreshHistory() {
-  conversationHistory.value = readHistory()
+async function refreshHistory() {
+  try {
+    const result = await apiGet('/api/assistant/conversations')
+    const remoteList = (result.data || []).map((item) => ({
+      id: `remote-${item.id}`,
+      remoteId: item.id,
+      title: item.title || '新的健康对话',
+      updatedAt: item.updated_at ? new Date(item.updated_at).getTime() : Date.now(),
+      status: item.status,
+    }))
+    conversationHistory.value = remoteList
+  } catch {
+    conversationHistory.value = readHistory()
+  }
 }
 
 function conversationTitle(list = messages.value) {
@@ -98,21 +125,51 @@ function saveConversationSnapshot() {
   ].sort((a, b) => b.updatedAt - a.updatedAt)
 
   writeHistory(next)
-  conversationHistory.value = next
 }
 
-function loadLatestConversation() {
-  refreshHistory()
+async function loadLatestConversation() {
+  await refreshHistory()
   const latest = conversationHistory.value[0]
-  if (!latest?.messages?.length) return
+  if (!latest?.remoteId) return
 
-  localConversationId.value = latest.id || createLocalId()
-  conversationId.value = latest.remoteId || null
-  activeTask.value = latest.task || suggestions[0]
-  messages.value = latest.messages
+  await loadConversationMessages(latest)
 }
 
-function loadConversation(item) {
+async function loadConversationMessages(item) {
+  loadingHistory.value = true
+  try {
+    const result = await apiGet(`/api/assistant/conversations/${item.remoteId}/messages`)
+    const serverMessages = (result.data || []).map((msg) => ({
+      role: msg.role,
+      content: msg.content,
+    }))
+
+    hasStarted.value = true
+    localConversationId.value = item.id || `remote-${item.remoteId}`
+    conversationId.value = item.remoteId
+    activeTask.value = item.task || suggestions[0]
+    messages.value = serverMessages.length
+      ? [{ ...welcomeMessage }, ...serverMessages]
+      : [{ ...welcomeMessage }]
+  } catch {
+    const local = readHistory().find((h) => h.remoteId === item.remoteId)
+    hasStarted.value = true
+    localConversationId.value = item.id || createLocalId()
+    conversationId.value = item.remoteId
+    messages.value = local?.messages?.length ? local.messages : [{ ...welcomeMessage }]
+  } finally {
+    loadingHistory.value = false
+    showHistory.value = false
+  }
+}
+
+async function loadConversation(item) {
+  if (item.remoteId) {
+    await loadConversationMessages(item)
+    return
+  }
+
+  hasStarted.value = true
   localConversationId.value = item.id || createLocalId()
   conversationId.value = item.remoteId || null
   activeTask.value = item.task || suggestions[0]
@@ -121,6 +178,7 @@ function loadConversation(item) {
 }
 
 function newConversation() {
+  hasStarted.value = true
   localConversationId.value = createLocalId()
   conversationId.value = null
   activeTask.value = suggestions[0]
@@ -133,6 +191,23 @@ function newConversation() {
 function openHistory() {
   refreshHistory()
   showHistory.value = true
+}
+
+async function continueLatestConversation() {
+  await refreshHistory()
+  const latest = conversationHistory.value[0]
+
+  if (latest?.remoteId) {
+    await loadConversationMessages(latest)
+    return
+  }
+
+  if (latest?.messages?.length) {
+    loadConversation(latest)
+    return
+  }
+
+  startAssistant()
 }
 
 async function readSse(response, target) {
@@ -168,6 +243,7 @@ async function readSse(response, target) {
 }
 
 async function sendMessage(preset = '') {
+  hasStarted.value = true
   const content = (preset || message.value).trim()
   if ((!content && attachments.value.length === 0) || sending.value) return
 
@@ -250,6 +326,11 @@ function speakText(text) {
 }
 
 function goBack() {
+  if (hasStarted.value) {
+    hasStarted.value = false
+    return
+  }
+
   if (window.history.length > 1) {
     router.back()
     return
@@ -361,123 +442,167 @@ function selectSuggestion(item) {
   activeTask.value = item
 }
 
+function startAssistant() {
+  hasStarted.value = true
+}
+
+function handleTabChange(key) {
+  if (key === 'assistant') return
+  router.push({ name: key === 'home' ? 'home' : key })
+}
+
 onMounted(loadLatestConversation)
 </script>
 
 <template>
   <main class="chat-page">
     <section class="chat-phone">
-      <header class="q-header">
-        <button type="button" aria-label="返回" @click="goBack">
-          <LeftOutlined />
-        </button>
-        <h1>健康助手</h1>
-        <button type="button" aria-label="历史对话" @click="openHistory">
-          <HistoryOutlined />
-        </button>
-      </header>
+      <template v-if="!hasStarted">
+        <header class="guide-header">
+          <h1>健康助手</h1>
+          <button type="button" aria-label="历史对话" @click="openHistory">
+            <HistoryOutlined />
+          </button>
+        </header>
 
-      <div class="q-scroll">
-        <section class="assistant-brand">
-          <span class="brand-mark">健</span>
-          <div>
-            <strong>糖尿病预治助手</strong>
-            <small>看风险、理报告、做今天能执行的清单</small>
-          </div>
-        </section>
+        <section class="guide-scroll">
+          <section class="assistant-hero">
+            <span class="hero-icon" aria-hidden="true">
+              <HeartOutlined />
+            </span>
+            <h2>今天想聊什么？</h2>
+            <p>饮食、风险、复查、报告……把问题发过来，帮你一步步理清楚。</p>
+          </section>
 
-        <section class="q-messages">
-          <article
-            v-for="(item, index) in messages"
-            :key="index"
-            class="q-message"
-            :class="item.role"
-          >
-            <p>{{ item.content || '生成中…' }}</p>
-            <div v-if="item.files?.length" class="message-files">
-              <span v-for="file in item.files" :key="file.name">
-                <PaperClipOutlined />
-                {{ file.name }}
+          <section class="quick-panel">
+            <button type="button" class="quick-action primary" @click="newConversation">
+              <MessageOutlined />
+              <span>
+                <strong>新建对话</strong>
+                <small>直接说出你想了解的问题</small>
               </span>
-            </div>
-            <div v-if="item.role === 'assistant'" class="message-actions">
-              <button type="button" aria-label="朗读回复" @click="speakText(item.content)"><SoundOutlined /></button>
-              <button type="button" aria-label="分享回复" @click="shareText(item.content)"><ShareAltOutlined /></button>
-              <button type="button" aria-label="复制回复" @click="copyText(item.content)"><CopyOutlined /></button>
-            </div>
-          </article>
+            </button>
+          </section>
         </section>
-      </div>
+      </template>
 
-      <footer class="q-input-area">
-        <div
-          ref="suggestionRowRef"
-          class="suggestion-row"
-          @wheel.prevent="scrollSuggestionRow"
-          @pointerdown="beginSuggestionDrag"
-          @pointermove="moveSuggestionDrag"
-          @pointerup="endSuggestionDrag"
-          @pointercancel="endSuggestionDrag"
-          @pointerleave="endSuggestionDrag"
-        >
-          <button
-            v-for="item in suggestions"
-            :key="item"
-            type="button"
-            :class="{ active: activeTask === item }"
-            :aria-pressed="activeTask === item"
-            @click="selectSuggestion(item)"
-          >
-            {{ item }}
+      <template v-else>
+        <header class="q-header">
+          <button type="button" aria-label="返回" @click="goBack">
+            <LeftOutlined />
           </button>
+          <h1>健康助手</h1>
+          <button type="button" aria-label="历史对话" @click="openHistory">
+            <HistoryOutlined />
+          </button>
+        </header>
+
+        <div class="q-scroll">
+          <section class="assistant-brand">
+            <span class="brand-mark">健</span>
+            <div>
+              <strong>糖尿病预治助手</strong>
+              <small>看风险、理报告、做今天能执行的清单</small>
+            </div>
+          </section>
+
+          <section class="q-messages">
+            <article
+              v-for="(item, index) in messages"
+              :key="index"
+              class="q-message"
+              :class="item.role"
+            >
+              <p>{{ item.content || '生成中…' }}</p>
+              <div v-if="item.files?.length" class="message-files">
+                <span v-for="file in item.files" :key="file.name">
+                  <PaperClipOutlined />
+                  {{ file.name }}
+                </span>
+              </div>
+              <div v-if="item.role === 'assistant'" class="message-actions">
+                <button type="button" aria-label="朗读回复" @click="speakText(item.content)"><SoundOutlined /></button>
+                <button type="button" aria-label="分享回复" @click="shareText(item.content)"><ShareAltOutlined /></button>
+                <button type="button" aria-label="复制回复" @click="copyText(item.content)"><CopyOutlined /></button>
+              </div>
+            </article>
+          </section>
         </div>
 
-        <div v-if="attachments.length" class="attachment-row">
-          <button
-            v-for="(file, index) in attachments"
-            :key="`${file.name}-${index}`"
-            type="button"
-            :aria-label="`移除附件 ${file.name}`"
-            @click="removeAttachment(index)"
+        <footer class="q-input-area">
+          <div
+            ref="suggestionRowRef"
+            class="suggestion-row"
+            @wheel.prevent="scrollSuggestionRow"
+            @pointerdown="beginSuggestionDrag"
+            @pointermove="moveSuggestionDrag"
+            @pointerup="endSuggestionDrag"
+            @pointercancel="endSuggestionDrag"
+            @pointerleave="endSuggestionDrag"
           >
-            <PaperClipOutlined />
-            <span>{{ file.name }}</span>
-            <em>{{ formatFileSize(file.size) }}</em>
-          </button>
-        </div>
+            <button
+              v-for="item in suggestions"
+              :key="item"
+              type="button"
+              :class="{ active: activeTask === item }"
+              :aria-pressed="activeTask === item"
+              @click="selectSuggestion(item)"
+            >
+              {{ item }}
+            </button>
+          </div>
 
-        <form class="q-input" @submit.prevent="sendMessage()">
-          <button type="button" aria-label="语音" @click="handleVoiceInput">
-            <AudioOutlined />
-          </button>
+          <div v-if="attachments.length" class="attachment-row">
+            <button
+              v-for="(file, index) in attachments"
+              :key="`${file.name}-${index}`"
+              type="button"
+              :aria-label="`移除附件 ${file.name}`"
+              @click="removeAttachment(index)"
+            >
+              <PaperClipOutlined />
+              <span>{{ file.name }}</span>
+              <em>{{ formatFileSize(file.size) }}</em>
+            </button>
+          </div>
+
+          <form class="q-input" @submit.prevent="sendMessage()">
+            <button type="button" aria-label="语音" @click="handleVoiceInput">
+              <AudioOutlined />
+            </button>
+            <input
+              v-model="message"
+              name="assistant_message"
+              autocomplete="off"
+              aria-label="输入健康助手问题"
+              :placeholder="inputPlaceholder"
+            />
+            <button type="button" aria-label="添加文件" @click="openFilePicker">
+              <PaperClipOutlined />
+            </button>
+            <button type="button" aria-label="拍照" @click="handleCameraUpload">
+              <CameraOutlined />
+            </button>
+            <button v-if="message.trim() || attachments.length" class="send" type="submit" aria-label="发送消息" :disabled="sending">
+              <SendOutlined />
+            </button>
+          </form>
           <input
-            v-model="message"
-            name="assistant_message"
-            autocomplete="off"
-            aria-label="输入健康助手问题"
-            :placeholder="inputPlaceholder"
+            ref="fileInput"
+            class="file-input"
+            type="file"
+            aria-label="上传健康助手附件"
+            multiple
+            :accept="fileAccept"
+            @change="handleFileChange"
           />
-          <button type="button" aria-label="添加文件" @click="openFilePicker">
-            <PaperClipOutlined />
-          </button>
-          <button type="button" aria-label="拍照" @click="handleCameraUpload">
-            <CameraOutlined />
-          </button>
-          <button v-if="message.trim() || attachments.length" class="send" type="submit" aria-label="发送消息" :disabled="sending">
-            <SendOutlined />
-          </button>
-        </form>
-        <input
-          ref="fileInput"
-          class="file-input"
-          type="file"
-          aria-label="上传健康助手附件"
-          multiple
-          :accept="fileAccept"
-          @change="handleFileChange"
-        />
-        <p>内容由 AI 生成</p>
-      </footer>
+          <p>内容由 AI 生成</p>
+        </footer>
+
+        <transition name="toast">
+          <div v-if="toastText" class="app-toast" role="status" aria-live="polite">{{ toastText }}</div>
+        </transition>
+      </template>
 
       <transition name="history">
         <section v-if="showHistory" class="history-mask" @click.self="showHistory = false">
@@ -509,9 +634,7 @@ onMounted(loadLatestConversation)
         </section>
       </transition>
 
-      <transition name="toast">
-        <div v-if="toastText" class="app-toast" role="status" aria-live="polite">{{ toastText }}</div>
-      </transition>
+      <LiquidTabBar active-key="assistant" @change="handleTabChange" />
     </section>
   </main>
 </template>
@@ -537,6 +660,146 @@ onMounted(loadLatestConversation)
   flex-direction: column;
   overflow: hidden;
   background: #ffffff;
+}
+
+.guide-header {
+  display: flex;
+  height: 52px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  border-bottom: 1px solid #edf1f5;
+  background: #ffffff;
+}
+
+.guide-header h1 {
+  margin: 0;
+  color: #101936;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.guide-header button {
+  position: absolute;
+  right: 14px;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 12px;
+  color: #1677ff;
+  background: #eef5ff;
+  font-size: 18px;
+}
+
+.guide-scroll {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 16px 18px;
+  background: linear-gradient(180deg, #f6faf8 0%, #f1f7f3 72%, #f8fbf9 100%);
+  scrollbar-width: none;
+}
+
+.guide-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.assistant-hero {
+  display: grid;
+  justify-items: center;
+  border-radius: 20px;
+  padding: 36px 24px 32px;
+  color: #ffffff;
+  background:
+    radial-gradient(circle at 82% 18%, rgba(255, 255, 255, 0.18) 0 58px, transparent 59px),
+    radial-gradient(circle at 14% 74%, rgba(255, 255, 255, 0.12) 0 44px, transparent 45px),
+    linear-gradient(145deg, #16a34a 0%, #0e8a5c 42%, #0b6e4a 100%);
+  box-shadow: 0 14px 28px rgba(16, 122, 60, 0.16);
+  text-align: center;
+}
+
+.hero-icon {
+  display: grid;
+  width: 64px;
+  height: 64px;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+  font-size: 30px;
+}
+
+.assistant-hero h2 {
+  margin: 16px 0 0;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: -0.3px;
+}
+
+.assistant-hero p {
+  max-width: 280px;
+  margin: 10px 0 0;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.6;
+}
+
+.quick-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.quick-action {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 11px;
+  align-items: center;
+  border-radius: 8px;
+  padding: 12px;
+  color: #162033;
+  background: #ffffff;
+  box-shadow: 0 8px 18px rgba(35, 75, 130, 0.06);
+  text-align: left;
+}
+
+.quick-action.primary {
+  color: #ffffff;
+  background:
+    radial-gradient(circle at 88% 20%, rgba(255,255,255,0.24) 0 42px, transparent 43px),
+    linear-gradient(135deg, #3157ff, #15a1ff);
+  box-shadow: 0 12px 24px rgba(49, 87, 255, 0.22);
+}
+
+.quick-action > span {
+  min-width: 0;
+}
+
+.quick-action svg {
+  font-size: 24px;
+}
+
+.quick-action strong,
+.quick-action small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quick-action strong {
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.quick-action small {
+  margin-top: 4px;
+  color: inherit;
+  opacity: 0.72;
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .q-header {
@@ -684,7 +947,7 @@ onMounted(loadLatestConversation)
 
 .q-input-area {
   flex: 0 0 auto;
-  padding: 10px 14px 16px;
+  padding: 10px 14px 12px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0), #ffffff 22%);
 }
 
@@ -829,112 +1092,137 @@ onMounted(loadLatestConversation)
   display: none;
 }
 
-.history-mask {
+.sidebar-overlay {
   position: absolute;
-  z-index: 70;
+  z-index: 80;
   inset: 0;
-  display: flex;
-  align-items: flex-end;
-  background: rgba(15, 23, 42, 0.18);
+  background: rgba(15, 23, 42, 0.24);
 }
 
-.history-panel {
-  width: 100%;
-  max-height: 58vh;
-  overflow-y: auto;
-  border-radius: 22px 22px 0 0;
-  padding: 17px 18px 20px;
+.sidebar-panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: min(300px, 82vw);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 18px 18px 24px;
   background: #ffffff;
-  box-shadow: 0 -14px 30px rgba(15, 23, 42, 0.12);
-  scrollbar-width: none;
+  box-shadow: 2px 0 32px rgba(15, 23, 42, 0.14);
 }
 
-.history-panel::-webkit-scrollbar {
-  display: none;
-}
-
-.history-panel header {
+.sidebar-panel header {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: space-between;
+  margin-bottom: 14px;
 }
 
-.history-panel header strong {
+.sidebar-panel header strong {
   color: #17243a;
   font-size: 16px;
   font-weight: 900;
 }
 
-.history-panel header button {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  border-radius: 999px;
-  padding: 8px 12px;
-  color: #ffffff;
-  background: #1677ff;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 900;
+.sidebar-panel header button {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 10px;
+  color: #6f7b8c;
+  background: #f3f4f6;
+  font-size: 16px;
 }
 
-.history-list {
-  display: grid;
-  margin-top: 13px;
-  border-top: 1px solid #edf1f5;
-}
-
-.history-list button {
-  display: grid;
+.sidebar-new {
+  display: flex;
   width: 100%;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px;
+  flex: 0 0 auto;
   align-items: center;
-  border-bottom: 1px solid #edf1f5;
-  padding: 13px 0;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 14px;
+  padding: 11px 0;
+  color: #ffffff;
+  background: linear-gradient(135deg, #16a34a, #0d9488);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 900;
+  box-shadow: 0 8px 18px rgba(16, 122, 60, 0.18);
+}
+
+.sidebar-list {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  margin-top: 16px;
+  scrollbar-width: none;
+}
+
+.sidebar-list::-webkit-scrollbar {
+  display: none;
+}
+
+.sidebar-list button {
+  display: block;
+  width: 100%;
+  border-bottom: 1px solid #f1f3f5;
+  padding: 14px 0 12px;
   background: transparent;
   cursor: pointer;
   text-align: left;
 }
 
-.history-list strong,
-.history-list small {
+.sidebar-list strong,
+.sidebar-list small {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.history-list em {
-  align-self: start;
-  color: #a1a8b3;
-  font-size: 10px;
-  font-style: normal;
-  font-weight: 900;
-  white-space: nowrap;
-}
-
-.history-list strong {
+.sidebar-list strong {
   color: #17243a;
   font-size: 14px;
   font-weight: 900;
 }
 
-.history-list small,
-.history-panel > p {
-  margin-top: 4px;
-  color: #7f8a99;
+.sidebar-list small {
+  margin-top: 5px;
+  color: #98a0ab;
   font-size: 11px;
   font-weight: 800;
 }
 
-.history-enter-active,
-.history-leave-active {
-  transition: opacity 0.2s ease;
+.sidebar-empty {
+  margin-top: 24px;
+  color: #98a0ab;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
 }
 
-.history-enter-from,
-.history-leave-to {
+.sidebar-enter-active,
+.sidebar-leave-active {
+  transition: opacity 0.22s ease;
+}
+
+.sidebar-enter-active .sidebar-panel,
+.sidebar-leave-active .sidebar-panel {
+  transition: transform 0.24s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.sidebar-enter-from,
+.sidebar-leave-to {
   opacity: 0;
+}
+
+.sidebar-enter-from .sidebar-panel,
+.sidebar-leave-to .sidebar-panel {
+  transform: translateX(-100%);
 }
 </style>
