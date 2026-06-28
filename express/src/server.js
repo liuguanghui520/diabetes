@@ -1,10 +1,10 @@
-import { appConfig, parseCliArgs, loadEnv } from './config/env.js'
+import { parseCliArgs, loadEnv } from './config/env.js'
 import { createApp } from './app.js'
 import { checkDatabase } from './db/pool.js'
 
 const cliArgs = parseCliArgs()
-const config = Object.keys(cliArgs).length > 0 ? loadEnv(cliArgs) : appConfig
-const app = createApp(config)
+const config = loadEnv(cliArgs)
+const app = await createApp(config)
 
 if (config.db.connectOnStart && app.locals.db.pool) {
   try {

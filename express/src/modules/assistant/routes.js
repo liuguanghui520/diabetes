@@ -10,6 +10,101 @@ const chatSchema = z.object({
   history: z.array(z.unknown()).optional()
 })
 
+const doctorChatSchema = chatSchema.extend({
+  attachments: z.array(z.unknown()).optional()
+})
+
+async function streamDifyChat({
+  req,
+  res,
+  store,
+  difyClient,
+  conversation,
+  appType,
+  doctorId = null,
+  inputs = {}
+}) {
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
+  res.setHeader('Cache-Control', 'no-cache, no-transform')
+  res.setHeader('Connection', 'keep-alive')
+  res.flushHeaders?.()
+
+  await store.createMessage({
+    conversation_id: conversation.id,
+    role: 'user',
+    content: req.body.message,
+    metadata: {
+      attachments: req.body.attachments || []
+    }
+  })
+
+  let fullAnswer = ''
+  let difyConversationId = conversation.dify_conversation_id || ''
+  let difyMessageId = null
+
+  const ping = setInterval(() => {
+    writeSse(res, 'ping', { ts: Date.now() })
+  }, 15000)
+
+  try {
+    const difyResponse = await difyClient.chatStream({
+      appType,
+      query: req.body.message,
+      inputs: {
+        user_id: String(req.user.id),
+        app_type: appType,
+        doctor_id: doctorId ? String(doctorId) : '',
+        ...inputs
+      },
+      conversationId: difyConversationId,
+      user: req.user.id,
+      signal: req.signal
+    })
+
+    await proxyDifySse({
+      response: difyResponse,
+      res,
+      onDelta(delta) {
+        fullAnswer += delta
+      },
+      async onEnd(event) {
+        difyConversationId = event.conversation_id || difyConversationId
+        difyMessageId = event.message_id || event.id || null
+
+        await store.updateConversation(conversation.id, {
+          dify_conversation_id: difyConversationId,
+          title: conversation.title || req.body.message.slice(0, 40)
+        })
+
+        if (fullAnswer) {
+          await store.createMessage({
+            conversation_id: conversation.id,
+            role: 'assistant',
+            content: fullAnswer,
+            dify_message_id: difyMessageId,
+            metadata: {
+              dify_conversation_id: difyConversationId
+            }
+          })
+        }
+
+        writeSse(res, 'message_end', {
+          conversation_id: conversation.id,
+          dify_conversation_id: difyConversationId,
+          dify_message_id: difyMessageId
+        })
+      }
+    })
+  } catch (error) {
+    writeSse(res, 'error', {
+      message: error.message || 'AI 服务暂时不可用'
+    })
+  } finally {
+    clearInterval(ping)
+    res.end()
+  }
+}
+
 export function registerAssistantRoutes(router, deps) {
   const auth = authMiddleware(deps)
   const { store, difyClient } = deps
@@ -33,81 +128,35 @@ export function registerAssistantRoutes(router, deps) {
       })
     }
 
-    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
-    res.setHeader('Cache-Control', 'no-cache, no-transform')
-    res.setHeader('Connection', 'keep-alive')
-    res.flushHeaders?.()
+    await streamDifyChat({
+      req,
+      res,
+      store,
+      difyClient,
+      conversation,
+      appType: 'assistant'
+    })
+  }))
 
-    await store.createMessage({
-      conversation_id: conversation.id,
-      role: 'user',
-      content: req.body.message,
-      metadata: {}
+  router.post('/doctors/:doctorId/chat', auth, validate(doctorChatSchema), asyncHandler(async (req, res) => {
+    const doctorId = Number(req.params.doctorId)
+    const conversation = await store.createConversation({
+      user_id: req.user.id,
+      app_type: 'doctor',
+      doctor_id: Number.isFinite(doctorId) ? doctorId : null,
+      dify_conversation_id: null,
+      title: req.body.message.slice(0, 40)
     })
 
-    let fullAnswer = ''
-    let difyConversationId = conversation.dify_conversation_id || ''
-    let difyMessageId = null
-
-    const ping = setInterval(() => {
-      writeSse(res, 'ping', { ts: Date.now() })
-    }, 15000)
-
-    try {
-      const difyResponse = await difyClient.chatStream({
-        appType: 'assistant',
-        query: req.body.message,
-        inputs: {
-          user_id: String(req.user.id),
-          app_type: 'assistant'
-        },
-        conversationId: difyConversationId,
-        user: req.user.id,
-        signal: req.signal
-      })
-
-      await proxyDifySse({
-        response: difyResponse,
-        res,
-        onDelta(delta) {
-          fullAnswer += delta
-        },
-        async onEnd(event) {
-          difyConversationId = event.conversation_id || difyConversationId
-          difyMessageId = event.message_id || event.id || null
-
-          await store.updateConversation(conversation.id, {
-            dify_conversation_id: difyConversationId,
-            title: conversation.title || req.body.message.slice(0, 40)
-          })
-
-          if (fullAnswer) {
-            await store.createMessage({
-              conversation_id: conversation.id,
-              role: 'assistant',
-              content: fullAnswer,
-              dify_message_id: difyMessageId,
-              metadata: {
-                dify_conversation_id: difyConversationId
-              }
-            })
-          }
-
-          writeSse(res, 'message_end', {
-            conversation_id: conversation.id,
-            dify_conversation_id: difyConversationId,
-            dify_message_id: difyMessageId
-          })
-        }
-      })
-    } catch (error) {
-      writeSse(res, 'error', {
-        message: error.message || 'AI 服务暂时不可用'
-      })
-    } finally {
-      clearInterval(ping)
-      res.end()
-    }
+    await streamDifyChat({
+      req,
+      res,
+      store,
+      difyClient,
+      conversation,
+      appType: 'doctor',
+      doctorId
+    })
   }))
 
   router.get('/assistant/conversations', auth, asyncHandler(async (req, res) => {

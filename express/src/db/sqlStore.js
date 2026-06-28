@@ -357,14 +357,26 @@ export function createSqlStore(pool) {
       }
     },
 
-    async getArticleRecommendations() {
-      const result = await pool.query(
+    async getArticleRecommendations({ page = 1, pageSize = 20 } = {}) {
+      const limit = Number(pageSize)
+      const offset = (Number(page) - 1) * limit
+      const [items, count] = await Promise.all([
+        pool.query(
         `select * from article
          where deleted_at is null and status = 'published'
          order by recommend_weight desc, published_at desc nulls last
-         limit 20`
-      )
-      return result.rows
+         limit $1 offset $2`,
+          [limit, offset]
+        ),
+        pool.query(`select count(*)::int as total from article where deleted_at is null and status = 'published'`)
+      ])
+
+      return {
+        items: items.rows,
+        total: count.rows[0]?.total || 0,
+        page: Number(page),
+        pageSize: limit
+      }
     },
 
     async getDoctorById(id) {
@@ -373,6 +385,86 @@ export function createSqlStore(pool) {
         [id]
       )
       return one(result)
+    },
+
+    async getActivePlan(userId) {
+      const planResult = await pool.query(
+        `select * from lifestyle_plan
+         where user_id = $1 and status = 'active'
+         order by updated_at desc
+         limit 1`,
+        [userId]
+      )
+      const plan = one(planResult)
+
+      if (!plan) {
+        return null
+      }
+
+      const taskResult = await pool.query(
+        `select
+          id,
+          task_type,
+          title,
+          description as desc,
+          target_value,
+          unit,
+          target_time as time,
+          weekdays,
+          metadata
+         from plan_task
+         where plan_id = $1
+         order by sort_order asc, id asc`,
+        [plan.id]
+      )
+
+      return {
+        ...plan,
+        tasks: taskResult.rows.map((task) => ({
+          ...task,
+          category: task.task_type,
+          target: [task.target_value, task.unit].filter(Boolean).join('') || task.unit || '1次'
+        }))
+      }
+    },
+
+    async createCheckin(userId, input) {
+      const date = input.recorded_at
+        ? new Date(input.recorded_at).toISOString().slice(0, 10)
+        : new Date().toISOString().slice(0, 10)
+
+      const record = await pool.query(
+        `insert into checkin_record
+         (user_id, checkin_date, completion_rate, created_at, updated_at)
+         values ($1, $2, 100, current_timestamp, current_timestamp)
+         on conflict (user_id, checkin_date) do update set
+          completion_rate = greatest(checkin_record.completion_rate, excluded.completion_rate),
+          updated_at = current_timestamp
+         returning *`,
+        [userId, date]
+      )
+      const checkinRecord = one(record)
+      const item = await pool.query(
+        `insert into checkin_item
+         (checkin_record_id, task_type, actual_value, unit, status, detail_text, metadata, created_at)
+         values ($1, $2, $3, $4, 'done', $5, $6::jsonb, current_timestamp)
+         returning *`,
+        [
+          checkinRecord.id,
+          input.type,
+          input.value === undefined ? 1 : Number.parseFloat(input.value) || 1,
+          input.unit || null,
+          input.detail_text || null,
+          JSON.stringify({
+            recorded_at: input.recorded_at || null
+          })
+        ]
+      )
+
+      return {
+        record: checkinRecord,
+        item: one(item)
+      }
     }
   }
 }

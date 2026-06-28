@@ -1,0 +1,202 @@
+import { z } from 'zod'
+import { asyncHandler, sendOk, validate } from '../../http/response.js'
+import { authMiddleware } from '../auth/auth.js'
+
+const articleQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(50).default(20)
+})
+
+const checkinSchema = z.object({
+  type: z.enum(['diet', 'exercise', 'water', 'sleep', 'glucose', 'review']).default('review'),
+  value: z.union([z.number(), z.string()]).optional(),
+  unit: z.string().max(32).optional(),
+  recorded_at: z.string().optional(),
+  detail_text: z.string().max(500).optional()
+})
+
+function calculateProfileCompletion(profile) {
+  if (!profile) {
+    return 0
+  }
+
+  const fields = [
+    'gender',
+    'age_snapshot',
+    'height_cm',
+    'weight_kg',
+    'waist_cm',
+    'sbp_mm_hg',
+    'family_history_diabetes'
+  ]
+  const completed = fields.filter((field) => (
+    profile[field] !== null &&
+    profile[field] !== undefined &&
+    profile[field] !== ''
+  )).length
+
+  return Math.round((completed / fields.length) * 100)
+}
+
+function normalizeArticle(article) {
+  return {
+    id: article.id,
+    title: article.title,
+    summary: article.summary || article.content || '',
+    category: article.category_name || article.category || article.tag || '健康资讯',
+    read_time: article.read_time || '3 分钟阅读',
+    published_at: article.published_at || article.created_at || null,
+    cover_url: article.cover_url || ''
+  }
+}
+
+function buildMessages({ profile, latestRisk, plan }) {
+  const now = new Date().toISOString()
+  const messages = []
+  const completionRate = calculateProfileCompletion(profile)
+
+  if (completionRate < 100) {
+    messages.push({
+      id: 'profile-completion',
+      type: 'archive',
+      group: 'service',
+      title: '健康档案待完善',
+      content: '补齐腰围、血压和家族史后，可以得到更准确的风险评估。',
+      tag: '档案',
+      route: 'healthArchive',
+      time: now,
+      read: false
+    })
+  }
+
+  if (latestRisk) {
+    messages.push({
+      id: `risk-${latestRisk.id}`,
+      type: 'risk',
+      group: 'service',
+      title: latestRisk.risk_level === 'high' ? '风险评估提示：高风险' : '风险评估已完成',
+      content: latestRisk.advice_summary || '可以查看最近一次风险评估结果和生活建议。',
+      tag: '评估',
+      route: 'health',
+      time: latestRisk.created_at || now,
+      read: true
+    })
+  }
+
+  messages.push({
+    id: 'daily-plan',
+    type: 'plan',
+    group: 'reminder',
+    title: plan ? '今日生活方案待打卡' : '可以生成你的生活方案',
+    content: plan
+      ? '完成饮食、运动、睡眠等任务后，后续建议会更贴近你的真实节奏。'
+      : '完善档案并完成风险评估后，可以开始每日生活管理。',
+    tag: '方案',
+    route: 'plan',
+    time: now,
+    read: false
+  })
+
+  messages.push({
+    id: 'assistant-ready',
+    type: 'assistant',
+    group: 'assistant',
+    title: '糖尿病助手已接入',
+    content: '可以继续咨询饮食、风险解释、复查清单和报告解读。',
+    tag: '助手',
+    route: 'assistant',
+    time: now,
+    read: true
+  })
+
+  return messages
+}
+
+export function registerContentRoutes(router, deps) {
+  const auth = authMiddleware(deps)
+
+  router.get('/home/summary', auth, asyncHandler(async (req, res) => {
+    const [user, profileResponse, latestRisk, articles, plan] = await Promise.all([
+      deps.store.findUserById(req.user.id),
+      deps.store.getProfile(req.user.id),
+      deps.store.getLatestRisk(req.user.id),
+      deps.store.getArticleRecommendations({ page: 1, pageSize: 3 }),
+      deps.store.getActivePlan(req.user.id)
+    ])
+    const profile = profileResponse || null
+    const completionRate = calculateProfileCompletion(profile)
+
+    sendOk(res, {
+      user,
+      profile: {
+        ...profile,
+        completed: completionRate === 100,
+        completion_rate: completionRate
+      },
+      latest_risk: latestRisk,
+      today_measurements: {
+        fasting_glucose: profile?.lifestyle?.fasting_glucose ?? null,
+        postprandial_glucose: profile?.lifestyle?.postprandial_glucose ?? null,
+        weight_kg: profile?.weight_kg ?? null
+      },
+      today_tasks: [
+        {
+          id: 'archive',
+          title: completionRate === 100 ? '健康档案已完善' : '完善健康档案',
+          desc: completionRate === 100 ? '基础资料已可用于评估。' : '补齐身高体重、腰围、血压和家族史。',
+          tag: completionRate === 100 ? '已完成' : `完成 ${completionRate}%`,
+          action_label: completionRate === 100 ? '查看' : '去完善',
+          completed: completionRate === 100
+        },
+        {
+          id: 'plan',
+          title: plan ? '完成今日生活方案' : '生成生活方案',
+          desc: plan ? '饮食、运动、睡眠任务等你打卡。' : '根据档案和风险评估生成每日任务。',
+          tag: plan ? '待打卡' : '可选',
+          action_label: plan ? '去打卡' : '去生成',
+          completed: false
+        }
+      ],
+      hot_articles: articles.items?.map(normalizeArticle) || articles.map?.(normalizeArticle) || []
+    })
+  }))
+
+  router.get('/articles', validate(articleQuerySchema, 'query'), asyncHandler(async (req, res) => {
+    const query = req.validatedQuery || req.query
+    const result = await deps.store.getArticleRecommendations(query)
+    const items = Array.isArray(result) ? result : result.items
+
+    sendOk(res, {
+      items: items.map(normalizeArticle),
+      total: result.total ?? items.length,
+      page: result.page ?? query.page,
+      pageSize: result.pageSize ?? query.pageSize
+    })
+  }))
+
+  router.get('/plans/active', auth, asyncHandler(async (req, res) => {
+    sendOk(res, await deps.store.getActivePlan(req.user.id))
+  }))
+
+  router.post('/checkins', auth, validate(checkinSchema), asyncHandler(async (req, res) => {
+    sendOk(res, await deps.store.createCheckin(req.user.id, req.body))
+  }))
+
+  router.get('/messages', auth, asyncHandler(async (req, res) => {
+    const [profile, latestRisk, plan] = await Promise.all([
+      deps.store.getProfile(req.user.id),
+      deps.store.getLatestRisk(req.user.id),
+      deps.store.getActivePlan(req.user.id)
+    ])
+
+    sendOk(res, {
+      list: buildMessages({ profile, latestRisk, plan })
+    })
+  }))
+
+  router.post('/messages/read-all', auth, asyncHandler(async (_req, res) => {
+    sendOk(res, {
+      updated: true
+    })
+  }))
+}

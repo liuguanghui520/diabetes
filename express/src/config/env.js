@@ -37,6 +37,14 @@ export function loadEnv(cliArgs = parseCliArgs()) {
 
   dotenv.config({ path: envPath, quiet: true })
 
+  const readBool = (value, fallback = false) => {
+    if (value === undefined || value === null) {
+      return fallback
+    }
+
+    return String(value) === 'true'
+  }
+
   return {
     env: process.env.NODE_ENV || 'development',
     host: cliArgs.host || process.env.HOST || '127.0.0.1',
@@ -46,14 +54,24 @@ export function loadEnv(cliArgs = parseCliArgs()) {
       expiresIn: process.env.JWT_EXPIRES_IN || '7d'
     },
     db: {
-      host: process.env.KINGBASE_HOST || '127.0.0.1',
-      port: Number(process.env.KINGBASE_PORT || 54321),
-      database: process.env.KINGBASE_DATABASE || 'diabetes_assistant',
-      user: process.env.KINGBASE_USER || 'system',
-      password: process.env.KINGBASE_PASSWORD || '',
-      ssl: process.env.KINGBASE_SSL === 'true',
-      connectOnStart: process.env.DB_CONNECT_ON_START === 'true',
-      useMemory: process.env.USE_IN_MEMORY_DB === 'true' || process.env.NODE_ENV === 'test'
+      host: cliArgs.kingbaseHost || process.env.KINGBASE_HOST || '127.0.0.1',
+      port: Number(cliArgs.kingbasePort || process.env.KINGBASE_PORT || 54321),
+      database: cliArgs.kingbaseDatabase || process.env.KINGBASE_DATABASE || 'diabetes_assistant',
+      user: cliArgs.kingbaseUser || process.env.KINGBASE_USER || 'system',
+      password: cliArgs.kingbasePassword || process.env.KINGBASE_PASSWORD || '',
+      ssl: readBool(cliArgs.kingbaseSsl, process.env.KINGBASE_SSL === 'true'),
+      connectOnStart: readBool(cliArgs.dbConnectOnStart, process.env.DB_CONNECT_ON_START === 'true'),
+      useMemory: readBool(cliArgs.useInMemoryDb, process.env.USE_IN_MEMORY_DB === 'true') || process.env.NODE_ENV === 'test',
+      ssh: {
+        enabled: readBool(cliArgs.sshEnabled, process.env.SSH_ENABLED === 'true'),
+        host: cliArgs.sshHost || process.env.SSH_HOST || '',
+        port: Number(cliArgs.sshPort || process.env.SSH_PORT || 22),
+        user: cliArgs.sshUser || process.env.SSH_USER || '',
+        password: cliArgs.sshPassword || process.env.SSH_PASSWORD || '',
+        remoteDbHost: cliArgs.sshRemoteDbHost || process.env.SSH_REMOTE_DB_HOST || '127.0.0.1',
+        remoteDbPort: Number(cliArgs.sshRemoteDbPort || process.env.SSH_REMOTE_DB_PORT || 54321),
+        localPort: Number(cliArgs.sshLocalPort || process.env.SSH_LOCAL_PORT || 15432)
+      }
     },
     dify: {
       baseUrl: (process.env.DIFY_BASE_URL || 'http://127.0.0.1').replace(/\/$/, ''),
@@ -70,5 +88,3 @@ export function loadEnv(cliArgs = parseCliArgs()) {
     internalDifyToken: process.env.INTERNAL_DIFY_TOKEN || 'change-me'
   }
 }
-
-export const appConfig = loadEnv()

@@ -4,7 +4,7 @@ import { createTestContext, registerAndLogin } from '../helpers.js'
 
 describe('Express API', () => {
   it('returns health status', async () => {
-    const { app } = createTestContext()
+    const { app } = await createTestContext()
     const response = await request(app).get('/health')
 
     expect(response.status).toBe(200)
@@ -13,7 +13,7 @@ describe('Express API', () => {
   })
 
   it('supports register, login and me', async () => {
-    const { app } = createTestContext()
+    const { app } = await createTestContext()
     const token = await registerAndLogin(request, app)
 
     const login = await request(app)
@@ -35,7 +35,7 @@ describe('Express API', () => {
   })
 
   it('upserts profile and calculates BMI', async () => {
-    const { app } = createTestContext()
+    const { app } = await createTestContext()
     const token = await registerAndLogin(request, app)
 
     const response = await request(app)
@@ -58,7 +58,7 @@ describe('Express API', () => {
   })
 
   it('runs risk assessment with mock Dify and stores the result', async () => {
-    const { app, difyClient } = createTestContext()
+    const { app, difyClient } = await createTestContext()
     const token = await registerAndLogin(request, app)
 
     const response = await request(app)
@@ -112,7 +112,7 @@ describe('Express API', () => {
   })
 
   it('proxies assistant SSE and normalizes Dify events', async () => {
-    const { app } = createTestContext()
+    const { app } = await createTestContext()
     const token = await registerAndLogin(request, app)
 
     const response = await request(app)
@@ -130,8 +130,67 @@ describe('Express API', () => {
     expect(response.text).toContain('"dify_conversation_id":"dify_mock_conversation"')
   })
 
+  it('serves frontend integration endpoints', async () => {
+    const { app } = await createTestContext()
+    const token = await registerAndLogin(request, app)
+
+    const summary = await request(app)
+      .get('/api/home/summary')
+      .set('Authorization', `Bearer ${token}`)
+    expect(summary.status).toBe(200)
+    expect(summary.body.data.user.username).toBe('kang')
+    expect(Array.isArray(summary.body.data.today_tasks)).toBe(true)
+
+    const articles = await request(app).get('/api/articles?page=1&pageSize=2')
+    expect(articles.status).toBe(200)
+    expect(articles.body.data.items.length).toBeGreaterThan(0)
+
+    const plan = await request(app)
+      .get('/api/plans/active')
+      .set('Authorization', `Bearer ${token}`)
+    expect(plan.status).toBe(200)
+    expect(Array.isArray(plan.body.data.tasks)).toBe(true)
+
+    const checkin = await request(app)
+      .post('/api/checkins')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        type: 'exercise',
+        value: 1,
+        unit: '次',
+        detail_text: '饭后轻走 20 分钟'
+      })
+    expect(checkin.status).toBe(200)
+
+    const messages = await request(app)
+      .get('/api/messages')
+      .set('Authorization', `Bearer ${token}`)
+    expect(messages.status).toBe(200)
+    expect(Array.isArray(messages.body.data.list)).toBe(true)
+  })
+
+  it('proxies doctor consultation SSE', async () => {
+    const { app, difyClient } = await createTestContext()
+    const token = await registerAndLogin(request, app)
+
+    const response = await request(app)
+      .post('/api/doctors/1/chat')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        conversation_id: null,
+        message: '帮我整理一份复诊前问题清单'
+      })
+
+    expect(response.status).toBe(200)
+    expect(response.text).toContain('event: message')
+    expect(difyClient.calls.chats.at(-1)).toMatchObject({
+      appType: 'doctor',
+      query: '帮我整理一份复诊前问题清单'
+    })
+  })
+
   it('protects internal Dify APIs with X-Internal-Token', async () => {
-    const { app } = createTestContext()
+    const { app } = await createTestContext()
 
     const denied = await request(app).get('/internal/dify/home-summary')
     expect(denied.status).toBe(403)

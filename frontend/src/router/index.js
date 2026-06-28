@@ -1,116 +1,109 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import MobileLayout from '../layouts/MobileLayout.vue'
 import HomeView from '../views/HomeView.vue'
-import HealthView from '../views/HealthView.vue'
-import RiskPredictView from '../views/RiskPredictView.vue'
-import HealthArchiveView from '../views/HealthArchiveView.vue'
-import PlanView from '../views/PlanView.vue'
-import NewsView from '../views/NewsView.vue'
-import UserCenterView from '../views/UserCenterView.vue'
-import AssistantView from '../views/AssistantView.vue'
-import LoginView from '../views/LoginView.vue'
-import MessageCenterView from '../views/MessageCenterView.vue'
-import DoctorsView from '../views/DoctorsView.vue'
-import DoctorConsultView from '../views/DoctorConsultView.vue'
-import ArticleDetailView from '../views/ArticleDetailView.vue'
-import DiabetesTypeDetailView from '../views/DiabetesTypeDetailView.vue'
-import CheckinAnalysisView from '../views/CheckinAnalysisView.vue'
+import LoginView from '../views/auth/LoginView.vue'
+import HealthJourneyView from '../views/journey/HealthJourneyView.vue'
+import HealthView from '../views/health/HealthView.vue'
+import HealthArchiveView from '../views/health/HealthArchiveView.vue'
+import PlanView from '../views/plan/PlanView.vue'
+import PlanTaskCreateView from '../views/plan/PlanTaskCreateView.vue'
+import NewsView from '../views/news/NewsView.vue'
+import AssistantView from '../views/assistant/AssistantView.vue'
+import UserCenterView from '../views/profile/UserCenterView.vue'
+import PersonalInfoView from '../views/profile/PersonalInfoView.vue'
+import DoctorConsultView from '../views/doctor/DoctorConsultView.vue'
+import DoctorProfileView from '../views/doctor/DoctorProfileView.vue'
+import MessagesView from '../views/messages/MessagesView.vue'
+import FavoritesView from '../views/favorites/FavoritesView.vue'
 
 const routes = [
     {
         path: '/',
-        redirect: '/home'
+        redirect: '/journey',
+    },
+    {
+        path: '/journey',
+        name: 'journey',
+        component: HealthJourneyView,
+    },
+    {
+        path: '/health',
+        name: 'health',
+        component: HealthView,
+    },
+    {
+        path: '/health/archive',
+        name: 'healthArchive',
+        component: HealthArchiveView,
+    },
+    {
+        path: '/plan',
+        name: 'plan',
+        component: PlanView,
+    },
+    {
+        path: '/plan/tasks/new',
+        name: 'planTaskCreate',
+        component: PlanTaskCreateView,
+    },
+    {
+        path: '/news',
+        name: 'news',
+        component: NewsView,
+    },
+    {
+        path: '/assistant',
+        name: 'assistant',
+        component: AssistantView,
+    },
+    {
+        path: '/profile',
+        name: 'profile',
+        component: UserCenterView,
+    },
+    {
+        path: '/profile/info',
+        name: 'personalInfo',
+        component: PersonalInfoView,
+    },
+    {
+        path: '/messages',
+        name: 'messages',
+        component: MessagesView,
+    },
+    {
+        path: '/favorites',
+        name: 'favorites',
+        component: FavoritesView,
+    },
+    {
+        path: '/doctor',
+        name: 'doctorConsult',
+        component: DoctorConsultView,
+    },
+    {
+        path: '/doctor/:id/profile',
+        name: 'doctorProfile',
+        component: DoctorProfileView,
+    },
+    {
+        path: '/home',
+        name: 'home',
+        component: HomeView,
     },
     {
         path: '/login',
-        name: 'Login',
-        component: LoginView
-    },
-    {
-        path: '/',
-        component: MobileLayout,
-        children: [
-            {
-                path: 'home',
-                name: 'Home',
-                component: HomeView
-            },
-            {
-                path: 'health',
-                name: 'Health',
-                component: HealthView
-            },
-            {
-                path: 'risk-predict',
-                name: 'RiskPredict',
-                component: RiskPredictView
-            },
-            {
-                path: 'health-archive',
-                name: 'HealthArchive',
-                component: HealthArchiveView
-            },
-            {
-                path: 'plan',
-                name: 'Plan',
-                component: PlanView
-            },
-            {
-                path: 'news',
-                name: 'News',
-                component: NewsView
-            },
-            {
-                path: 'article/:id',
-                name: 'ArticleDetail',
-                component: ArticleDetailView
-            },
-            {
-                path: 'diabetes-type/:code',
-                name: 'DiabetesTypeDetail',
-                component: DiabetesTypeDetailView
-            },
-            {
-                path: 'doctors',
-                name: 'Doctors',
-                component: DoctorsView
-            },
-            {
-                path: 'doctor-consult/:id',
-                name: 'DoctorConsult',
-                component: DoctorConsultView
-            },
-            {
-                path: 'messages',
-                name: 'MessageCenter',
-                component: MessageCenterView
-            },
-            {
-                path: 'checkin-analysis',
-                name: 'CheckinAnalysis',
-                component: CheckinAnalysisView
-            },
-            {
-                path: 'assistant',
-                name: 'Assistant',
-                component: AssistantView
-            },
-            {
-                path: 'user',
-                name: 'UserCenter',
-                component: UserCenterView
-            }
-        ]
+        name: 'login',
+        component: LoginView,
     },
     {
         path: '/:pathMatch(.*)*',
-        redirect: '/home'
-    }
+        redirect: '/journey',
+    },
 ]
 
 const router = createRouter({
     history: createWebHistory(),
-    routes: routes
+    routes,
 })
 
 export default router

@@ -251,12 +251,87 @@ export function createMemoryStore() {
       }
     },
 
-    async getArticleRecommendations() {
-      return clone(state.articles)
+    async getArticleRecommendations({ page = 1, pageSize = 20 } = {}) {
+      const seededArticles = state.articles.length > 0
+        ? state.articles
+        : [
+            {
+              id: 'food-breakfast',
+              title: '早餐怎么吃，上午血糖更平稳？',
+              summary: '主食、蛋白质和蔬菜搭配顺序，会影响餐后血糖曲线。',
+              category: '控糖饮食',
+              read_time: '3 分钟阅读',
+              published_at: now()
+            },
+            {
+              id: 'walk-after-meal',
+              title: '饭后轻走 20 分钟有什么帮助？',
+              summary: '低强度、可持续的活动更适合日常控糖管理。',
+              category: '科学运动',
+              read_time: '4 分钟阅读',
+              published_at: now()
+            },
+            {
+              id: 'screening-fields',
+              title: '风险筛查为什么要看腰围和血压？',
+              summary: '腰围、血压、BMI 和家族史能共同提示代谢风险。',
+              category: '健康筛查',
+              read_time: '5 分钟阅读',
+              published_at: now()
+            }
+          ]
+      const start = (Number(page) - 1) * Number(pageSize)
+
+      return {
+        items: clone(seededArticles.slice(start, start + Number(pageSize))),
+        total: seededArticles.length,
+        page: Number(page),
+        pageSize: Number(pageSize)
+      }
     },
 
     async getDoctorById(id) {
       return clone(state.doctors.find((doctor) => doctor.id === Number(id)) || null)
+    },
+
+    async getActivePlan(userId) {
+      const latestRisk = await this.getLatestRisk(userId)
+
+      return {
+        id: 'default-active-plan',
+        title: '基础生活管理方案',
+        goal_summary: latestRisk?.risk_level === 'high'
+          ? '优先稳定餐后活动、饮食结构和复查节奏。'
+          : '保持记录习惯，逐步形成可持续的生活节奏。',
+        status: 'active',
+        tasks: [
+          {
+            id: 'plan-diet',
+            task_type: 'diet',
+            title: '记录三餐主食和蛋白质',
+            description: '先观察饮食结构，不急着大幅调整。',
+            target: '3次',
+            time: '早中晚'
+          },
+          {
+            id: 'plan-walk',
+            task_type: 'exercise',
+            title: '饭后轻走 20 分钟',
+            description: '选择最容易坚持的一餐开始。',
+            target: '20分',
+            time: '餐后'
+          }
+        ]
+      }
+    },
+
+    async createCheckin(userId, input) {
+      return {
+        id: `checkin-${Date.now()}`,
+        user_id: Number(userId),
+        ...input,
+        created_at: now()
+      }
     }
   }
 }

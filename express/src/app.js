@@ -8,10 +8,11 @@ import { registerProfileRoutes } from './modules/profile/routes.js'
 import { registerRiskRoutes } from './modules/risk/routes.js'
 import { registerAssistantRoutes } from './modules/assistant/routes.js'
 import { registerInternalRoutes } from './modules/internal/routes.js'
+import { registerContentRoutes } from './modules/content/routes.js'
 
-export function createApp(config, overrides = {}) {
+export async function createApp(config, overrides = {}) {
   const app = express()
-  const db = overrides.db || createDb(config)
+  const db = overrides.db || await createDb(config)
   const deps = {
     config,
     pool: db.pool,
@@ -30,6 +31,7 @@ export function createApp(config, overrides = {}) {
   registerProfileRoutes(api, deps)
   registerRiskRoutes(api, deps)
   registerAssistantRoutes(api, deps)
+  registerContentRoutes(api, deps)
   app.use('/api', api)
 
   registerInternalRoutes(app, deps)

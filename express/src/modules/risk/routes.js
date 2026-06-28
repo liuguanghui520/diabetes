@@ -171,6 +171,6 @@ export function registerRiskRoutes(router, deps) {
   }))
 
   router.get('/risk-assessments', auth, validate(listQuerySchema, 'query'), asyncHandler(async (req, res) => {
-    sendOk(res, await store.listRisks(req.user.id, req.query))
+    sendOk(res, await store.listRisks(req.user.id, req.validatedQuery))
   }))
 }

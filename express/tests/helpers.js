@@ -3,7 +3,7 @@ import { loadEnv } from '../src/config/env.js'
 import { createMemoryStore } from '../src/db/memoryStore.js'
 import { createMockDifyClient } from '../src/services/dify/mockClient.js'
 
-export function createTestContext() {
+export async function createTestContext() {
   const config = loadEnv()
   config.env = 'test'
   config.db.useMemory = true
@@ -11,7 +11,7 @@ export function createTestContext() {
   config.jwt.secret = 'test-secret'
   const store = createMemoryStore()
   const difyClient = createMockDifyClient()
-  const app = createApp(config, {
+  const app = await createApp(config, {
     db: {
       pool: null,
       store,
