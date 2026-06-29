@@ -9,6 +9,12 @@ export function traceMiddleware(req, res, next) {
 }
 
 export function sendOk(res, data = {}, message = 'ok') {
+  // 为 GET 请求添加协商缓存
+  if (res.req.method === 'GET') {
+    res.setHeader('Cache-Control', 'private, max-age=30')
+    res.setHeader('ETag', `W/"${Buffer.from(JSON.stringify(data)).length}-${Date.now().toString(36)}"`)
+  }
+
   return res.json({
     code: 0,
     message,

@@ -14,9 +14,11 @@ export function createPool(config, overrides = {}) {
     user: config.db.user,
     password: config.db.password,
     ssl: config.db.ssl ? { rejectUnauthorized: false } : false,
-    max: 10,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000
+    max: 20,
+    min: 2,
+    idleTimeoutMillis: 60000,
+    connectionTimeoutMillis: 10000,
+    allowExitOnIdle: false
   })
 }
 
