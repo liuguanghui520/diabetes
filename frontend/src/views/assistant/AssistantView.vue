@@ -5,7 +5,6 @@ import {
   AudioOutlined,
   BarChartOutlined,
   CameraOutlined,
-  ClockCircleOutlined,
   CopyOutlined,
   FileDoneOutlined,
   HistoryOutlined,

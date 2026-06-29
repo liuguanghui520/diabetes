@@ -3,6 +3,7 @@ import { asyncHandler, sendOk, validate } from '../../http/response.js'
 import { authMiddleware } from '../auth/auth.js'
 import { newRequestId } from '../../utils/ids.js'
 import { safeJson } from '../../utils/json.js'
+import { normalizePlanTask } from '../../utils/planTask.js'
 
 const planSchema = z.object({
   risk_assessment_id: z.union([z.number().int(), z.string(), z.null()]).optional(),
@@ -30,20 +31,6 @@ function addDays(dateText, days) {
   const date = new Date(`${dateText}T00:00:00.000Z`)
   date.setUTCDate(date.getUTCDate() + days)
   return date.toISOString().slice(0, 10)
-}
-
-function normalizeTask(task, index = 0) {
-  return {
-    task_type: task.task_type || task.category || 'review',
-    title: task.title || '健康管理任务',
-    description: task.description || task.desc || task.content || '',
-    target_value: task.target_value ?? task.value ?? null,
-    unit: task.unit || null,
-    target_time: task.target_time || task.time || '',
-    weekdays: task.weekdays || null,
-    sort_order: task.sort_order ?? index,
-    metadata: task.metadata || {}
-  }
 }
 
 function fallbackPlan(preferences = {}) {
@@ -93,7 +80,7 @@ function normalizePlanOutput(outputs, preferences) {
     title: String(plan.title || fallback.title),
     summary: String(plan.summary || plan.goal_summary || fallback.summary),
     sections: Array.isArray(plan.sections) ? plan.sections : [],
-    tasks: tasks.map(normalizeTask),
+    tasks: tasks.map((task, index) => normalizePlanTask(task, index, { emptyTimeFallback: '' })),
     disclaimer: String(plan.disclaimer || fallback.disclaimer),
     raw: plan
   }
@@ -134,11 +121,12 @@ function normalizeReportOutput(outputs) {
   }
 }
 
-export function registerWorkflowRoutes(router, deps) {
+export function registerWorkflowRoutes(router, deps, options = {}) {
   const auth = authMiddleware(deps)
   const { store, difyClient } = deps
+  const sensitiveLimiter = options.sensitiveLimiter || ((_req, _res, next) => next())
 
-  router.post('/plans/generate', auth, validate(planSchema), asyncHandler(async (req, res) => {
+  router.post('/plans/generate', sensitiveLimiter, auth, validate(planSchema), asyncHandler(async (req, res) => {
     const requestId = newRequestId()
     const latestRisk = req.body.risk_assessment_id
       ? null
@@ -199,7 +187,7 @@ export function registerWorkflowRoutes(router, deps) {
     })
   }))
 
-  router.post('/checkins/analysis', auth, validate(checkinAnalysisSchema), asyncHandler(async (req, res) => {
+  router.post('/checkins/analysis', sensitiveLimiter, auth, validate(checkinAnalysisSchema), asyncHandler(async (req, res) => {
     const requestId = newRequestId()
     const periodEnd = req.body.period_end || todayOnly()
     const periodStart = req.body.period_start || addDays(periodEnd, -(req.body.days - 1))
@@ -246,7 +234,7 @@ export function registerWorkflowRoutes(router, deps) {
     })
   }))
 
-  router.post('/reports/interpret', auth, validate(reportInterpretSchema), asyncHandler(async (req, res) => {
+  router.post('/reports/interpret', sensitiveLimiter, auth, validate(reportInterpretSchema), asyncHandler(async (req, res) => {
     const requestId = newRequestId()
     const inputs = {
       user_id: String(req.user.id),

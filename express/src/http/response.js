@@ -69,7 +69,7 @@ export function errorHandler(error, req, res, _next) {
     })
   }
 
-  console.error(`[${req.traceId}]`, error)
+  console.error(`[${req.traceId}] ${error?.name || 'Error'}: ${error?.message || 'Unhandled error'}`)
 
   return res.status(500).json({
     code: 50001,

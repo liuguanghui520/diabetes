@@ -2,6 +2,12 @@ import express from 'express'
 import { createDb } from './db/index.js'
 import { createDifyClient } from './services/dify/client.js'
 import { errorHandler, notFoundHandler, traceMiddleware } from './http/response.js'
+import {
+  createCorsMiddleware,
+  createGeneralRateLimit,
+  createHelmetMiddleware,
+  createSensitiveRateLimit
+} from './http/security.js'
 import { registerAuthRoutes } from './modules/auth/auth.js'
 import { registerHealthRoutes } from './modules/health/routes.js'
 import { registerProfileRoutes } from './modules/profile/routes.js'
@@ -23,17 +29,21 @@ export async function createApp(config, overrides = {}) {
   }
 
   app.disable('x-powered-by')
+  app.use(createHelmetMiddleware(config))
+  app.use(createCorsMiddleware(config))
   app.use(traceMiddleware)
+  app.use(createGeneralRateLimit(config))
   app.use(express.json({ limit: '1mb' }))
 
   registerHealthRoutes(app, deps)
 
   const api = express.Router()
-  registerAuthRoutes(api, deps)
+  const sensitiveLimiter = createSensitiveRateLimit(config)
+  registerAuthRoutes(api, deps, { sensitiveLimiter })
   registerProfileRoutes(api, deps)
   registerRiskRoutes(api, deps)
-  registerAssistantRoutes(api, deps)
-  registerWorkflowRoutes(api, deps)
+  registerAssistantRoutes(api, deps, { sensitiveLimiter })
+  registerWorkflowRoutes(api, deps, { sensitiveLimiter })
   registerContentRoutes(api, deps)
   registerAdminRoutes(api, deps)
   app.use('/api', api)

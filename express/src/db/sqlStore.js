@@ -1,4 +1,5 @@
 import { errors } from '../http/errors.js'
+import { normalizePlanTask } from '../utils/planTask.js'
 
 function one(result) {
   return result.rows[0] || null
@@ -28,20 +29,6 @@ function addDays(date, days) {
 
 function toDateOnly(date) {
   return date.toISOString().slice(0, 10)
-}
-
-function normalizePlanTask(task, index = 0) {
-  return {
-    task_type: task.task_type || task.category || 'review',
-    title: task.title || '健康管理任务',
-    description: task.description || task.desc || task.content || '',
-    target_value: task.target_value ?? task.value ?? null,
-    unit: task.unit || null,
-    target_time: task.target_time || task.time || null,
-    weekdays: task.weekdays || null,
-    sort_order: task.sort_order ?? index,
-    metadata: task.metadata || {}
-  }
 }
 
 export function createSqlStore(pool) {

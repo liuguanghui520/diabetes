@@ -105,11 +105,12 @@ async function streamDifyChat({
   }
 }
 
-export function registerAssistantRoutes(router, deps) {
+export function registerAssistantRoutes(router, deps, options = {}) {
   const auth = authMiddleware(deps)
   const { store, difyClient } = deps
+  const sensitiveLimiter = options.sensitiveLimiter || ((_req, _res, next) => next())
 
-  router.post('/assistant/chat', auth, validate(chatSchema), asyncHandler(async (req, res) => {
+  router.post('/assistant/chat', sensitiveLimiter, auth, validate(chatSchema), asyncHandler(async (req, res) => {
     let conversation = null
 
     if (req.body.conversation_id) {
@@ -138,7 +139,7 @@ export function registerAssistantRoutes(router, deps) {
     })
   }))
 
-  router.post('/doctors/:doctorId/chat', auth, validate(doctorChatSchema), asyncHandler(async (req, res) => {
+  router.post('/doctors/:doctorId/chat', sensitiveLimiter, auth, validate(doctorChatSchema), asyncHandler(async (req, res) => {
     const doctorId = Number(req.params.doctorId)
     const conversation = await store.createConversation({
       user_id: req.user.id,

@@ -1,6 +1,8 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { randomBytes } from 'node:crypto'
 import dotenv from 'dotenv'
+import { buildSecurityConfig } from '../http/security.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const projectRoot = path.resolve(__dirname, '..', '..')
@@ -45,14 +47,28 @@ export function loadEnv(cliArgs = parseCliArgs()) {
     return String(value) === 'true'
   }
 
+  const env = process.env.NODE_ENV || 'development'
+  const isProduction = env === 'production'
+  const jwtSecret = process.env.JWT_SECRET
+  const internalDifyToken = process.env.INTERNAL_DIFY_TOKEN
+
+  if (isProduction && !jwtSecret) {
+    throw new Error('JWT_SECRET is required in production')
+  }
+
+  if (isProduction && !internalDifyToken) {
+    throw new Error('INTERNAL_DIFY_TOKEN is required in production')
+  }
+
   return {
-    env: process.env.NODE_ENV || 'development',
+    env,
     host: cliArgs.host || process.env.HOST || '127.0.0.1',
     port: Number(cliArgs.port || process.env.PORT || 3001),
     jwt: {
-      secret: process.env.JWT_SECRET || 'dev-only-secret',
+      secret: jwtSecret || randomBytes(32).toString('hex'),
       expiresIn: process.env.JWT_EXPIRES_IN || '7d'
     },
+    security: buildSecurityConfig(env, process.env),
     db: {
       host: cliArgs.kingbaseHost || process.env.KINGBASE_HOST || '127.0.0.1',
       port: Number(cliArgs.kingbasePort || process.env.KINGBASE_PORT || 54321),
@@ -86,6 +102,6 @@ export function loadEnv(cliArgs = parseCliArgs()) {
         admin: process.env.DIFY_ADMIN_API_KEY || ''
       }
     },
-    internalDifyToken: process.env.INTERNAL_DIFY_TOKEN || 'change-me'
+    internalDifyToken: internalDifyToken || randomBytes(32).toString('hex')
   }
 }

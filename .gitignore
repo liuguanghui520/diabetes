@@ -4,6 +4,7 @@
 !/README.md
 !/frontend/
 !/frontend/**
+!/frontend/.env.example
 !/express/
 !/express/**
 
@@ -18,3 +19,6 @@ docs/
 
 frontend/node_modules/
 frontend/dist/
+frontend/.env
+frontend/.env.*
+!frontend/.env.example

@@ -82,10 +82,11 @@ export function adminMiddleware(deps) {
   ]
 }
 
-export function registerAuthRoutes(router, deps) {
+export function registerAuthRoutes(router, deps, options = {}) {
   const { store, config } = deps
+  const sensitiveLimiter = options.sensitiveLimiter || ((_req, _res, next) => next())
 
-  router.post('/auth/register', validate(registerSchema), asyncHandler(async (req, res) => {
+  router.post('/auth/register', sensitiveLimiter, validate(registerSchema), asyncHandler(async (req, res) => {
     const passwordHash = await bcrypt.hash(req.body.password, 10)
     const user = await store.createUser({
       username: req.body.username,
@@ -102,7 +103,7 @@ export function registerAuthRoutes(router, deps) {
     })
   }))
 
-  router.post('/auth/login', validate(loginSchema), asyncHandler(async (req, res) => {
+  router.post('/auth/login', sensitiveLimiter, validate(loginSchema), asyncHandler(async (req, res) => {
     const user = await store.findUserByAccount(req.body.account)
 
     if (!user || user.status !== 'active') {

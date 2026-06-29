@@ -11,8 +11,6 @@ function internalAuth(config) {
 }
 
 export function registerInternalRoutes(app, deps) {
-  const router = app.route ? null : null
-  void router
   const auth = internalAuth(deps.config)
 
   app.get('/internal/dify/users/:userId/context', auth, asyncHandler(async (req, res) => {

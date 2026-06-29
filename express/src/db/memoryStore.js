@@ -586,14 +586,24 @@ export function createMemoryStore() {
         })))
     },
 
-    async getCheckinAnalysis() {
+    async getCheckinAnalysis(userId) {
+      const records = await this.getCheckinRecords(userId, { days: 7 })
+      const expected = 14
+      const done = records.reduce((total, record) => total + (record.items?.length || 0), 0)
+      const completionRate = Math.min(100, Math.round((done / expected) * 100))
+      const strong = completionRate >= 60
+
       return {
         period_days: 7,
-        completion_rate: 78,
-        completed_count: 11,
-        expected_count: 14,
-        evaluation: '您的饮食和运动打卡完成情况良好，尤其是在运动方面表现突出。',
-        advice: '继续保持良好的饮食和运动习惯，注意饮食多样性和运动适度。'
+        completion_rate: completionRate,
+        completed_count: done,
+        expected_count: expected,
+        evaluation: strong
+          ? '您的饮食和运动打卡完成情况良好，说明生活管理节奏已经开始稳定。'
+          : '饮食执行存在缺口，运动计划完成不足，建议先把每天 2 次关键打卡固定下来。',
+        advice: strong
+          ? '继续保持饮食多样性和运动适度，避免过度疲劳，并定期复查血糖。'
+          : '设置手机提醒，优先落实早餐和晚餐记录；运动从饭后 15-20 分钟轻走开始。'
       }
     },
 

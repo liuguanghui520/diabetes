@@ -1,10 +1,10 @@
-import { mockApiRequest, mockAuthorizedFetch } from './mock'
-
 const TOKEN_KEY = 'diabetesAuthToken'
 const USER_KEY = 'diabetesAuthUser'
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
-const API_MODE = String(import.meta.env.VITE_API_MODE || 'real').toLowerCase()
+const API_MODE = import.meta.env.DEV
+    ? String(import.meta.env.VITE_API_MODE || 'real').toLowerCase()
+    : 'real'
 
 export class ApiRequestError extends Error {
     constructor(message, options = {}) {
@@ -19,7 +19,17 @@ export class ApiRequestError extends Error {
 }
 
 export function isMockMode() {
-    return API_MODE !== 'real'
+    return import.meta.env.DEV && API_MODE !== 'real'
+}
+
+async function loadMockApi() {
+    if (!isMockMode()) {
+        throw new ApiRequestError('Mock API is only available in development mode.')
+    }
+
+    const importMock = new Function('return import("./mock")')
+
+    return importMock()
 }
 
 function isAbsoluteUrl(url) {
@@ -196,6 +206,7 @@ export async function apiRequest(path, options = {}) {
     }
 
     if (isMockMode()) {
+        const { mockApiRequest } = await loadMockApi()
         const mockResult = await mockApiRequest(path, {
             method: upperMethod,
             data,
@@ -303,6 +314,7 @@ export async function authorizedFetch(path, options = {}) {
     }
 
     if (isMockMode()) {
+        const { mockAuthorizedFetch } = await loadMockApi()
         return mockAuthorizedFetch(path, {
             ...fetchOptions,
             method,

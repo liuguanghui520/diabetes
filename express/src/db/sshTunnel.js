@@ -5,7 +5,7 @@ import net from 'node:net'
  * 创建 SSH 隧道，将本地端口转发到远程服务器上的目标地址。
  *
  * 使用方式（参考 ssh_kingbase_connect.py）：
- *   SSH 连接到 8.145.44.8:22
+ *   SSH 连接到 your-server-host:22
  *   本地监听 127.0.0.1:15432
  *   通过 SSH 转发到远程服务器上的 127.0.0.1:54321（金仓数据库）
  *
