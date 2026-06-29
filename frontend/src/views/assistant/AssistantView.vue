@@ -43,6 +43,11 @@ const hasStarted = ref(false)
 const conversationHistory = ref([])
 const loadingHistory = ref(false)
 const messages = ref([{ ...welcomeMessage }])
+const activeHistoryKey = computed(() => conversationId.value ? `remote-${conversationId.value}` : localConversationId.value)
+const currentConversationTitle = computed(() => {
+  const item = conversationHistory.value.find((history) => history.id === activeHistoryKey.value)
+  return item?.title || conversationTitle()
+})
 const suggestionDrag = reactive({
   active: false,
   moved: false,
@@ -85,6 +90,14 @@ function writeHistory(list) {
   localStorage.setItem(HISTORY_KEY, JSON.stringify(list.slice(0, 12)))
 }
 
+function cloneMessages(list) {
+  return list.map((item) => ({
+    role: item.role,
+    content: item.content,
+    files: Array.isArray(item.files) ? item.files.map((file) => ({ ...file })) : undefined,
+  }))
+}
+
 async function refreshHistory() {
   try {
     const result = await apiGet('/api/assistant/conversations')
@@ -116,7 +129,7 @@ function saveConversationSnapshot() {
     task: activeTask.value,
     title: conversationTitle(),
     updatedAt: Date.now(),
-    messages: messages.value,
+    messages: cloneMessages(messages.value),
   }
 
   const next = [
@@ -148,6 +161,8 @@ async function loadConversationMessages(item) {
     localConversationId.value = item.id || `remote-${item.remoteId}`
     conversationId.value = item.remoteId
     activeTask.value = item.task || suggestions[0]
+    attachments.value = []
+    message.value = ''
     messages.value = serverMessages.length
       ? [{ ...welcomeMessage }, ...serverMessages]
       : [{ ...welcomeMessage }]
@@ -156,6 +171,9 @@ async function loadConversationMessages(item) {
     hasStarted.value = true
     localConversationId.value = item.id || createLocalId()
     conversationId.value = item.remoteId
+    activeTask.value = item.task || suggestions[0]
+    attachments.value = []
+    message.value = ''
     messages.value = local?.messages?.length ? local.messages : [{ ...welcomeMessage }]
   } finally {
     loadingHistory.value = false
@@ -173,7 +191,9 @@ async function loadConversation(item) {
   localConversationId.value = item.id || createLocalId()
   conversationId.value = item.remoteId || null
   activeTask.value = item.task || suggestions[0]
-  messages.value = item.messages?.length ? item.messages : [{ ...welcomeMessage }]
+  attachments.value = []
+  message.value = ''
+  messages.value = item.messages?.length ? cloneMessages(item.messages) : [{ ...welcomeMessage }]
   showHistory.value = false
 }
 
@@ -274,6 +294,9 @@ async function sendMessage(preset = '') {
       await readSse(response, reply)
     } else {
       const payload = await response.json()
+      if (!response.ok || (payload?.code !== undefined && payload.code !== 0)) {
+        throw new Error(payload?.message || '发送失败。')
+      }
       reply.content = payload.data?.reply || payload.data?.answer || '我收到了，我们可以继续细化。'
       conversationId.value = payload.data?.conversation_id || conversationId.value
     }
@@ -451,7 +474,7 @@ function handleTabChange(key) {
   router.push({ name: key === 'home' ? 'home' : key })
 }
 
-onMounted(loadLatestConversation)
+onMounted(refreshHistory)
 </script>
 
 <template>
@@ -501,8 +524,8 @@ onMounted(loadLatestConversation)
           <section class="assistant-brand">
             <span class="brand-mark">健</span>
             <div>
-              <strong>糖尿病预治助手</strong>
-              <small>看风险、理报告、做今天能执行的清单</small>
+              <strong>{{ currentConversationTitle }}</strong>
+              <small>{{ conversationId ? `会话 #${conversationId}` : '新对话' }} · 看风险、理报告、做今天能执行的清单</small>
             </div>
           </section>
 
@@ -620,6 +643,7 @@ onMounted(loadLatestConversation)
                 v-for="item in conversationHistory"
                 :key="item.id"
                 type="button"
+                :class="{ active: item.id === activeHistoryKey }"
                 @click="loadConversation(item)"
               >
                 <span>
@@ -629,7 +653,7 @@ onMounted(loadLatestConversation)
                 <em>{{ formatHistoryTime(item.updatedAt) }}</em>
               </button>
             </div>
-            <p v-else>还没有历史对话</p>
+            <p v-else>{{ loadingHistory ? '正在读取历史对话' : '还没有历史对话' }}</p>
           </div>
         </section>
       </transition>
@@ -1090,6 +1114,140 @@ onMounted(loadLatestConversation)
 
 .file-input {
   display: none;
+}
+
+.history-mask {
+  position: absolute;
+  z-index: 90;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(15, 23, 42, 0.32);
+}
+
+.history-panel {
+  width: 100%;
+  max-height: min(560px, 78vh);
+  overflow: hidden;
+  border-radius: 20px 20px 0 0;
+  padding: 18px 16px calc(24px + env(safe-area-inset-bottom));
+  background: #ffffff;
+  box-shadow: 0 -18px 38px rgba(15, 23, 42, 0.16);
+}
+
+.history-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.history-panel header strong {
+  color: #17243a;
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.history-panel header button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  padding: 8px 11px;
+  color: #ffffff;
+  background: #1677ff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.history-list {
+  display: grid;
+  max-height: 430px;
+  overflow-y: auto;
+  gap: 8px;
+  margin-top: 14px;
+  scrollbar-width: none;
+}
+
+.history-list::-webkit-scrollbar {
+  display: none;
+}
+
+.history-list button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid #edf1f5;
+  border-radius: 8px;
+  padding: 12px;
+  background: #f8fbff;
+  text-align: left;
+}
+
+.history-list button.active {
+  border-color: rgba(22, 119, 255, 0.34);
+  background: #eef5ff;
+}
+
+.history-list span {
+  min-width: 0;
+}
+
+.history-list strong,
+.history-list small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-list strong {
+  color: #17243a;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.history-list small {
+  margin-top: 5px;
+  color: #8a97a8;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.history-list em {
+  color: #9aa5b5;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.history-panel > p {
+  margin: 28px 0 10px;
+  color: #98a0ab;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.history-enter-active,
+.history-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.history-enter-active .history-panel,
+.history-leave-active .history-panel {
+  transition: transform 0.22s ease;
+}
+
+.history-enter-from,
+.history-leave-to {
+  opacity: 0;
+}
+
+.history-enter-from .history-panel,
+.history-leave-to .history-panel {
+  transform: translateY(100%);
 }
 
 .sidebar-overlay {

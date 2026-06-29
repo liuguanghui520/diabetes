@@ -10,13 +10,16 @@ import {
   SafetyCertificateOutlined,
   SaveOutlined,
 } from '@ant-design/icons-vue'
-import { apiGet, apiPut } from '../../api/request'
+import { apiGet, apiPost, apiPut } from '../../api/request'
 
 const router = useRouter()
 const toastText = ref('')
 const saving = ref(false)
+const interpretingReport = ref(false)
 const reportInput = ref(null)
 const reportFiles = ref([])
+const reportText = ref('')
+const reportInterpretation = ref(null)
 
 const form = reactive({
   diagnosed_diabetes: null,
@@ -167,6 +170,32 @@ async function saveProfile() {
     showToast(error.message || '保存失败，请稍后再试。')
   } finally {
     saving.value = false
+  }
+}
+
+async function interpretReport() {
+  const text = reportText.value.trim()
+
+  if (!text) {
+    showToast('请先粘贴报告文本。')
+    return
+  }
+
+  interpretingReport.value = true
+
+  try {
+    const response = await apiPost('/api/reports/interpret', {
+      report_text: text,
+      metadata: {
+        file_names: reportFiles.value.map((file) => file.name),
+      },
+    })
+    reportInterpretation.value = response.data
+    showToast('报告解读已生成。')
+  } catch (error) {
+    showToast(error.message || '报告解读失败，请稍后再试。')
+  } finally {
+    interpretingReport.value = false
   }
 }
 
@@ -389,10 +418,39 @@ onMounted(loadProfile)
               <FileSearchOutlined />
               <span>
                 <strong>上传体检报告</strong>
-                <small>先放入待确认列表，后端接入后再解析指标。</small>
+                <small>可先选择文件留痕，再粘贴报告文本让 AI 解读。</small>
               </span>
               <van-icon name="arrow" />
             </button>
+          </section>
+
+          <section class="data-section report-section">
+            <div class="section-title">
+              <FileSearchOutlined />
+              <span>报告解读</span>
+            </div>
+            <van-field
+              v-model="reportText"
+              class="report-textarea"
+              type="textarea"
+              autosize
+              rows="4"
+              maxlength="20000"
+              show-word-limit
+              placeholder="粘贴体检报告中的关键文本，例如：空腹血糖 6.4 mmol/L，糖化血红蛋白 6.1%。"
+            />
+            <div class="report-action">
+              <van-button
+                round
+                type="primary"
+                size="small"
+                :loading="interpretingReport"
+                loading-text="解读中"
+                @click="interpretReport"
+              >
+                AI 解读报告
+              </van-button>
+            </div>
           </section>
 
           <section v-if="reportFiles.length" class="report-files">
@@ -407,6 +465,22 @@ onMounted(loadProfile)
               <span>{{ file.name }}</span>
               <em>待确认</em>
             </button>
+          </section>
+
+          <section v-if="reportInterpretation" class="report-result">
+            <h2>{{ reportInterpretation.summary }}</h2>
+            <div v-if="reportInterpretation.indicators?.length" class="indicator-list">
+              <article v-for="item in reportInterpretation.indicators" :key="`${item.name}-${item.value}`">
+                <strong>{{ item.name }}</strong>
+                <span>{{ item.value }} {{ item.unit }}</span>
+                <em>{{ item.status || '待确认' }}</em>
+                <p>{{ item.explanation }}</p>
+              </article>
+            </div>
+            <ul v-if="reportInterpretation.advice?.length">
+              <li v-for="item in reportInterpretation.advice" :key="item">{{ item }}</li>
+            </ul>
+            <small v-if="reportInterpretation.confirm_required">以上结果需结合原始报告确认。</small>
           </section>
 
           <input
@@ -755,6 +829,107 @@ onMounted(loadProfile)
 
 .report-input {
   display: none;
+}
+
+.report-section {
+  padding-bottom: 14px;
+}
+
+.report-textarea {
+  padding: 10px 20px 0;
+  background: transparent;
+}
+
+.report-textarea :deep(.van-field__control) {
+  min-height: 92px;
+  border-radius: 8px;
+  padding: 10px;
+  background: #f5f8fc;
+  color: #101936;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.55;
+}
+
+.report-action {
+  display: flex;
+  justify-content: flex-end;
+  padding: 10px 20px 0;
+}
+
+.report-result {
+  margin-top: 10px;
+  padding: 15px 20px;
+  background: #ffffff;
+}
+
+.report-result h2 {
+  margin: 0;
+  color: #101936;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1.55;
+}
+
+.indicator-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.indicator-list article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  border-radius: 8px;
+  padding: 10px;
+  background: #f5f8fc;
+}
+
+.indicator-list strong,
+.indicator-list span,
+.indicator-list em {
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.indicator-list strong {
+  color: #101936;
+}
+
+.indicator-list span {
+  color: #1677ff;
+}
+
+.indicator-list em {
+  color: #ff7a00;
+  font-style: normal;
+}
+
+.indicator-list p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #6f86a8;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.report-result ul {
+  margin: 12px 0 0;
+  padding-left: 18px;
+  color: #536984;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.7;
+}
+
+.report-result small {
+  display: block;
+  margin-top: 10px;
+  color: #8b98aa;
+  font-size: 10px;
+  font-weight: 900;
 }
 
 .submit-spacer {

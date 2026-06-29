@@ -10,11 +10,12 @@ import {
 } from '@ant-design/icons-vue'
 import LiquidTabBar from '../../components/navigation/LiquidTabBar.vue'
 import TopUserActions from '../../components/navigation/TopUserActions.vue'
-import { apiGet, hasAuthSession } from '../../api/request'
+import { apiGet, apiPost, hasAuthSession } from '../../api/request'
 
 const router = useRouter()
 const toastText = ref('')
 const loading = ref(false)
+const assessing = ref(false)
 const authRefreshKey = ref(0)
 const userInfo = ref(readStoredUser())
 const profilePayload = ref(createEmptyProfilePayload())
@@ -235,6 +236,23 @@ function glucoseStatus(value, type) {
   return value >= 11.1 ? '偏高' : value >= 7.8 ? '临界' : '平稳'
 }
 
+function calculateAge(value) {
+  if (!value) return null
+
+  const birth = new Date(value)
+  if (Number.isNaN(birth.getTime())) return null
+
+  const today = new Date()
+  let age = today.getFullYear() - birth.getFullYear()
+  const monthDiff = today.getMonth() - birth.getMonth()
+
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+    age -= 1
+  }
+
+  return age > 0 && age < 130 ? age : null
+}
+
 function formatMissingFields(fields) {
   if (!Array.isArray(fields) || fields.length === 0) {
     return '补充腰围、血压、家族史后会更准确。'
@@ -265,6 +283,74 @@ function requireLogin() {
   if (isLoggedIn.value) return false
   showToast('请先登录，再使用完整健康管理功能。')
   return true
+}
+
+function buildRiskPayload() {
+  const source = profile.value
+  const measurements = latestMeasurements.value
+  const age = Number(source.age_snapshot || source.age || calculateAge(source.birth_date))
+  const gender = source.gender === 'female' ? 'female' : source.gender === 'male' ? 'male' : ''
+  const height = numberOrNull(source.height_cm)
+  const weight = numberOrNull(source.weight_kg || measurements.weight_kg)
+  const waist = numberOrNull(source.waist_cm)
+  const sbp = numberOrNull(source.sbp_mm_hg || source.systolic_bp || measurements.sbp_mm_hg)
+
+  const missing = []
+  if (!Number.isFinite(age)) missing.push('出生日期')
+  if (!gender) missing.push('性别')
+  if (!height) missing.push('身高')
+  if (!weight) missing.push('体重')
+  if (!waist) missing.push('腰围')
+  if (!sbp) missing.push('收缩压')
+  if (source.family_history_diabetes === null || source.family_history_diabetes === undefined) missing.push('家族史')
+  if (source.diagnosed_diabetes === null || source.diagnosed_diabetes === undefined) missing.push('是否确诊')
+
+  if (missing.length) return { missing }
+
+  return {
+    payload: {
+      diagnosed_diabetes: Boolean(source.diagnosed_diabetes),
+      diabetes_type: source.diagnosed_diabetes ? source.diabetes_type || 'unknown' : null,
+      age,
+      gender,
+      height_cm: height,
+      weight_kg: weight,
+      waist_cm: waist,
+      sbp_mm_hg: Math.round(sbp),
+      dbp_mm_hg: numberOrNull(source.dbp_mm_hg),
+      family_history_diabetes: Boolean(source.family_history_diabetes),
+      past_history: Array.isArray(source.past_history) ? source.past_history : [],
+      labs: {
+        fasting_glucose: numberOrNull(measurements.fasting_glucose || source.fasting_glucose),
+        postprandial_glucose: numberOrNull(measurements.postprandial_glucose || source.postprandial_glucose),
+        hba1c: numberOrNull(measurements.hba1c || source.hba1c),
+      },
+    },
+  }
+}
+
+async function runRiskAssessment() {
+  if (requireLogin()) return
+
+  const { payload, missing } = buildRiskPayload()
+
+  if (!payload) {
+    showToast(`请先补齐：${missing.slice(0, 4).join('、')}`)
+    return
+  }
+
+  assessing.value = true
+
+  try {
+    const result = await apiPost('/api/risk-assessments', payload, { idempotent: true })
+    riskPayload.value = result.data
+    showToast('AI 健康评估已更新。')
+    await loadHealthData({ silent: true })
+  } catch (error) {
+    showToast(error.message || '评估失败，请稍后再试。')
+  } finally {
+    assessing.value = false
+  }
 }
 
 async function loadHealthData({ silent = false } = {}) {
@@ -362,9 +448,14 @@ onBeforeUnmount(() => {
               <van-tag round type="primary">预测分数</van-tag>
               <h2>{{ displayName }}，今天先看这一项</h2>
               <p>{{ scoreCard.desc }}</p>
-              <van-button round type="primary" size="small" @click="handleScoreAction">
-                {{ scoreCard.action }}
-              </van-button>
+              <div class="score-actions">
+                <van-button round type="primary" size="small" :loading="assessing" loading-text="评估中" @click="runRiskAssessment">
+                  {{ latestRisk ? '重新评估' : 'AI评估' }}
+                </van-button>
+                <van-button round plain type="primary" size="small" @click="handleScoreAction">
+                  {{ scoreCard.action }}
+                </van-button>
+              </div>
             </div>
 
             <button class="score-ring" type="button" @click="handleScoreAction">
@@ -528,6 +619,16 @@ onBeforeUnmount(() => {
   line-height: 1.55;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.score-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.score-actions :deep(.van-button) {
+  min-width: 76px;
 }
 
 .score-ring {

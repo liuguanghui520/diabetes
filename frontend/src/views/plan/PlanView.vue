@@ -10,6 +10,8 @@ const mode = ref('plan')
 const plan = ref(null)
 const analysis = ref(null)
 const toastText = ref('')
+const generatingPlan = ref(false)
+const analyzing = ref(false)
 const doneMap = ref(readDoneMap())
 
 const defaultGroups = [
@@ -105,23 +107,45 @@ function showToast(text) {
 async function loadPlan() {
   try {
     const result = await apiGet('/api/plans/active')
-    plan.value = result.data
+    plan.value = result.data?.plan || result.data
   } catch {
     plan.value = null
   }
 }
 
+async function generatePlan() {
+  generatingPlan.value = true
+
+  try {
+    const result = await apiPost('/api/plans/generate', {
+      preferences: {
+        goal: '控糖、规律运动和复查提醒',
+      },
+    }, { idempotent: true })
+    plan.value = result.data?.plan || result.data
+    showToast(result.data?.workflow?.fallback ? '已生成基础方案。' : 'AI 生活方案已生成。')
+  } catch (error) {
+    showToast(error.message || '生成方案失败，请稍后再试。')
+  } finally {
+    generatingPlan.value = false
+  }
+}
+
 async function loadAnalysis() {
   mode.value = 'analysis'
+  analyzing.value = true
   try {
-    const result = await apiGet('/api/checkins/analysis')
+    const result = await apiPost('/api/checkins/analysis', { days: 7 }, { idempotent: true })
     analysis.value = result.data
-  } catch {
+  } catch (error) {
     analysis.value = {
       completion_rate: completionRate.value,
       evaluation: '打卡记录越完整，AI 分析越贴近日常生活。',
       advice: '优先完成饮食和运动两类核心任务。',
     }
+    showToast(error.message || 'AI 分析暂不可用，已展示本地摘要。')
+  } finally {
+    analyzing.value = false
   }
 }
 
@@ -166,11 +190,23 @@ onMounted(loadPlan)
           <LeftOutlined />
         </button>
         <h1>{{ mode === 'analysis' ? 'AI智能打卡分析' : '生活方案' }}</h1>
-        <button v-if="mode === 'plan'" type="button" @click="loadAnalysis">打卡分析</button>
+        <button v-if="mode === 'plan'" type="button" :disabled="analyzing" @click="loadAnalysis">
+          {{ analyzing ? '分析中' : '打卡分析' }}
+        </button>
         <span v-else></span>
       </header>
 
       <div v-if="mode === 'plan'" class="plan-scroll">
+        <section class="plan-summary">
+          <div>
+            <span>{{ plan?.title || '个性化方案' }}</span>
+            <p>{{ plan?.goal_summary || plan?.summary || '生成后会同步 Dify 生活方案，并替换下方默认任务。' }}</p>
+          </div>
+          <button type="button" :disabled="generatingPlan" @click="generatePlan">
+            {{ generatingPlan ? '生成中' : (plan?.id && plan.id !== 'default-active-plan' ? '重新生成' : 'AI生成') }}
+          </button>
+        </section>
+
         <section v-for="group in groupedTasks" :key="group.key" class="plan-group">
           <header
             class="group-head"
@@ -312,6 +348,51 @@ onMounted(loadPlan)
 .plan-scroll::-webkit-scrollbar,
 .analysis-scroll::-webkit-scrollbar {
   display: none;
+}
+
+.plan-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 14px;
+  border-radius: 8px;
+  padding: 13px 14px;
+  background: #ffffff;
+  box-shadow: 0 6px 16px rgba(27, 55, 95, 0.06);
+}
+
+.plan-summary span {
+  display: block;
+  color: #101936;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.plan-summary p {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 5px 0 0;
+  color: #66748a;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.plan-summary button {
+  border-radius: 999px;
+  padding: 8px 12px;
+  color: #ffffff;
+  background: #1677ff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.plan-summary button:disabled,
+.plan-nav button:disabled {
+  opacity: 0.62;
 }
 
 .plan-group {
