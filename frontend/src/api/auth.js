@@ -26,6 +26,8 @@ function validatePassword(password) {
 }
 
 export async function loginByPassword(account, password) {
+    clearAuthSession()
+
     const response = await apiPost(
         '/api/auth/login',
         {

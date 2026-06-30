@@ -31,6 +31,77 @@ function toDateOnly(date) {
   return date.toISOString().slice(0, 10)
 }
 
+function todayOnly() {
+  return toDateOnly(new Date())
+}
+
+async function getOwnedPlanTaskRow(executor, userId, taskId) {
+  const result = await executor.query(
+    `select pt.*, lp.user_id, lp.status as plan_status
+     from plan_task pt
+     join lifestyle_plan lp on lp.id = pt.plan_id
+     where pt.id = $1 and lp.user_id = $2
+     limit 1`,
+    [taskId, userId]
+  )
+
+  return one(result)
+}
+
+async function ensureActivePlanRow(executor, userId) {
+  const existing = await executor.query(
+    `select * from lifestyle_plan
+     where user_id = $1 and status = 'active'
+     order by updated_at desc
+     limit 1`,
+    [userId]
+  )
+  const plan = one(existing)
+
+  if (plan) {
+    return plan
+  }
+
+  const result = await executor.query(
+    `insert into lifestyle_plan
+     (user_id, risk_assessment_id, title, goal_summary, status, start_date,
+      end_date, preferences, plan_json, dify_workflow_run_id, created_at, updated_at)
+     values
+     ($1, null, '我的生活任务', '手动维护的日常管理任务', 'active', current_date,
+      current_date + 13, '{}'::jsonb, '{"source":"manual"}'::jsonb, null, current_timestamp, current_timestamp)
+     returning *`,
+    [userId]
+  )
+
+  return one(result)
+}
+
+async function refreshCheckinCompletion(executor, recordId, planId) {
+  const totalResult = await executor.query(
+    `select count(*)::int as total from plan_task where plan_id = $1`,
+    [planId]
+  )
+  const doneResult = await executor.query(
+    `select count(*)::int as total
+     from checkin_item
+     where checkin_record_id = $1 and status = 'done'`,
+    [recordId]
+  )
+  const total = totalResult.rows[0]?.total || 0
+  const done = doneResult.rows[0]?.total || 0
+  const completionRate = total > 0 ? Math.round((done / total) * 100) : 0
+  const updated = await executor.query(
+    `update checkin_record
+     set completion_rate = $2,
+         updated_at = current_timestamp
+     where id = $1
+     returning *`,
+    [recordId, completionRate]
+  )
+
+  return one(updated)
+}
+
 export function createSqlStore(pool) {
   return {
     async findUserByAccount(account) {
@@ -367,6 +438,53 @@ export function createSqlStore(pool) {
       return one(result)
     },
 
+    async updateDifyLog(id, patch = {}) {
+      const existing = await pool.query(`select * from dify_run_log where id = $1`, [id])
+      const log = one(existing)
+
+      if (!log) {
+        throw errors.notFound('Dify 运行日志不存在')
+      }
+
+      const next = { ...log, ...patch }
+      const result = await pool.query(
+        `update dify_run_log set
+          workflow_run_id = $2,
+          task_id = $3,
+          conversation_id = $4,
+          outputs = $5::jsonb,
+          status = $6,
+          elapsed_time = $7,
+          total_tokens = $8,
+          error_message = $9
+         where id = $1
+         returning *`,
+        [
+          id,
+          next.workflow_run_id || null,
+          next.task_id || null,
+          next.conversation_id || null,
+          JSON.stringify(next.outputs || {}),
+          next.status,
+          next.elapsed_time || null,
+          next.total_tokens || null,
+          next.error_message || null
+        ]
+      )
+      return one(result)
+    },
+
+    async getDifyLogByRequestId(userId, requestId) {
+      const result = await pool.query(
+        `select * from dify_run_log
+         where request_id = $1 and ($2::bigint is null or user_id = $2)
+         order by created_at desc
+         limit 1`,
+        [requestId, userId || null]
+      )
+      return one(result)
+    },
+
     async getUserContext(userId) {
       return {
         profile: await this.getProfile(userId),
@@ -422,16 +540,24 @@ export function createSqlStore(pool) {
       }
     },
 
-    async getArticleRecommendations({ page = 1, pageSize = 20 } = {}) {
+    async getArticleRecommendations({ page = 1, pageSize = 20, userId = null } = {}) {
       const limit = Number(pageSize)
       const offset = (Number(page) - 1) * limit
       const [items, count] = await Promise.all([
         pool.query(
-        `select * from article
-         where deleted_at is null and status = 'published'
+        `select
+           a.*,
+           c.name as category_name,
+           exists(
+             select 1 from article_favorite af
+             where af.article_id = a.id and af.user_id = $3
+           ) as favorited
+         from article a
+         left join article_category c on c.id = a.category_id
+         where a.deleted_at is null and a.status = 'published'
          order by recommend_weight desc, published_at desc nulls last
          limit $1 offset $2`,
-          [limit, offset]
+          [limit, offset, userId]
         ),
         pool.query(`select count(*)::int as total from article where deleted_at is null and status = 'published'`)
       ])
@@ -511,6 +637,117 @@ export function createSqlStore(pool) {
       return { favorited: true }
     },
 
+    async toggleArticleLike(userId, articleId) {
+      const existing = await pool.query(
+        `select id from article_like where user_id = $1 and article_id = $2 limit 1`,
+        [userId, articleId]
+      )
+
+      if (one(existing)) {
+        await pool.query(
+          `delete from article_like where user_id = $1 and article_id = $2`,
+          [userId, articleId]
+        )
+        await pool.query(
+          `update article
+           set like_count = greatest(like_count - 1, 0)
+           where id = $1`,
+          [articleId]
+        )
+        return { liked: false }
+      }
+
+      await pool.query(
+        `insert into article_like (user_id, article_id, created_at)
+         values ($1, $2, current_timestamp)
+         on conflict (user_id, article_id) do nothing`,
+        [userId, articleId]
+      )
+      await pool.query(
+        `update article set like_count = like_count + 1 where id = $1`,
+        [articleId]
+      )
+      return { liked: true }
+    },
+
+    async listArticleComments(articleId, { userId = null } = {}) {
+      const result = await pool.query(
+        `select
+           c.id,
+           c.article_id,
+           c.user_id,
+           c.parent_id,
+           c.content,
+           c.like_count,
+           c.created_at,
+           u.nickname,
+           u.username,
+           exists(
+             select 1 from article_comment_like acl
+             where acl.comment_id = c.id and acl.user_id = $2
+           ) as liked
+         from article_comment c
+         join sys_user u on u.id = c.user_id
+         where c.article_id = $1 and c.deleted_at is null
+         order by c.created_at asc`,
+        [articleId, userId]
+      )
+      return result.rows
+    },
+
+    async createArticleComment(userId, articleId, input) {
+      const result = await pool.query(
+        `insert into article_comment
+         (article_id, user_id, parent_id, content, created_at, updated_at)
+         values ($1, $2, $3, $4, current_timestamp, current_timestamp)
+         returning *`,
+        [
+          articleId,
+          userId,
+          input.parent_id || null,
+          input.content
+        ]
+      )
+      return one(result)
+    },
+
+    async toggleArticleCommentLike(userId, commentId) {
+      const existing = await pool.query(
+        `select id from article_comment_like where user_id = $1 and comment_id = $2 limit 1`,
+        [userId, commentId]
+      )
+
+      if (one(existing)) {
+        await pool.query(
+          `delete from article_comment_like where user_id = $1 and comment_id = $2`,
+          [userId, commentId]
+        )
+        await pool.query(
+          `update article_comment
+           set like_count = greatest(like_count - 1, 0),
+               updated_at = current_timestamp
+           where id = $1`,
+          [commentId]
+        )
+        return { liked: false }
+      }
+
+      await pool.query(
+        `insert into article_comment_like (user_id, comment_id, created_at)
+         values ($1, $2, current_timestamp)
+         on conflict (user_id, comment_id) do nothing`,
+        [userId, commentId]
+      )
+      await pool.query(
+        `update article_comment
+         set like_count = like_count + 1,
+             updated_at = current_timestamp
+         where id = $1`,
+        [commentId]
+      )
+      return { liked: true }
+    },
+
     async getDoctorById(id) {
       const result = await pool.query(
         `select * from doctor where id = $1 and deleted_at is null limit 1`,
@@ -524,6 +761,16 @@ export function createSqlStore(pool) {
         `select * from doctor
          where deleted_at is null
            and ($1 = false or display_status = 'published')
+         order by sort_order asc, id asc`,
+        [publishedOnly]
+      )
+      return result.rows
+    },
+
+    async listDiabetesTypes({ publishedOnly = true } = {}) {
+      const result = await pool.query(
+        `select * from diabetes_type_info
+         where ($1 = false or status = 'published')
          order by sort_order asc, id asc`,
         [publishedOnly]
       )
@@ -566,7 +813,8 @@ export function createSqlStore(pool) {
         tasks: taskResult.rows.map((task) => ({
           ...task,
           category: task.task_type,
-          target: [task.target_value, task.unit].filter(Boolean).join('') || task.unit || '1次'
+          target: [task.target_value, task.unit].filter(Boolean).join('') || task.unit || '1次',
+          completed: false
         }))
       }
     },
@@ -675,6 +923,180 @@ export function createSqlStore(pool) {
         record: checkinRecord,
         item: one(item)
       }
+    },
+
+    async savePlanTask(userId, input) {
+      return transaction(pool, async (client) => {
+        const plan = await ensureActivePlanRow(client, userId)
+
+        if (input.id) {
+          const owned = await getOwnedPlanTaskRow(client, userId, input.id)
+
+          if (!owned) {
+            throw errors.notFound('任务不存在')
+          }
+
+          const normalized = normalizePlanTask(input, owned.sort_order || 0, { emptyTimeFallback: '' })
+          const result = await client.query(
+            `update plan_task set
+              task_type = $2,
+              title = $3,
+              description = $4,
+              target_value = $5,
+              unit = $6,
+              target_time = $7,
+              weekdays = $8,
+              metadata = $9::jsonb
+             where id = $1
+             returning *`,
+            [
+              input.id,
+              normalized.task_type,
+              normalized.title,
+              normalized.description,
+              normalized.target_value,
+              normalized.unit,
+              normalized.target_time,
+              normalized.weekdays,
+              JSON.stringify(normalized.metadata || {})
+            ]
+          )
+          return one(result)
+        }
+
+        const maxSort = await client.query(
+          `select coalesce(max(sort_order), -1) as value
+           from plan_task
+           where plan_id = $1`,
+          [plan.id]
+        )
+        const normalized = normalizePlanTask(input, Number(maxSort.rows[0]?.value || -1) + 1, { emptyTimeFallback: '' })
+        const result = await client.query(
+          `insert into plan_task
+           (plan_id, task_type, title, description, target_value, unit, target_time,
+            weekdays, sort_order, metadata, created_at)
+           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, current_timestamp)
+           returning *`,
+          [
+            plan.id,
+            normalized.task_type,
+            normalized.title,
+            normalized.description,
+            normalized.target_value,
+            normalized.unit,
+            normalized.target_time,
+            normalized.weekdays,
+            normalized.sort_order,
+            JSON.stringify(normalized.metadata || {})
+          ]
+        )
+
+        return one(result)
+      })
+    },
+
+    async deletePlanTask(userId, taskId) {
+      return transaction(pool, async (client) => {
+        const owned = await getOwnedPlanTaskRow(client, userId, taskId)
+
+        if (!owned) {
+          throw errors.notFound('任务不存在')
+        }
+
+        await client.query(`delete from plan_task where id = $1`, [taskId])
+        await client.query(
+          `delete from checkin_item
+           where plan_task_id = $1`,
+          [taskId]
+        )
+
+        return { deleted: true }
+      })
+    },
+
+    async listPlanTasks(userId) {
+      const result = await pool.query(
+        `select
+           pt.*,
+           lp.status as plan_status
+         from plan_task pt
+         join lifestyle_plan lp on lp.id = pt.plan_id
+         where lp.user_id = $1 and lp.status = 'active'
+         order by pt.sort_order asc, pt.id asc`,
+        [userId]
+      )
+
+      return result.rows
+    },
+
+    async setPlanTaskCompletion(userId, taskId, completed, input = {}) {
+      return transaction(pool, async (client) => {
+        const task = await getOwnedPlanTaskRow(client, userId, taskId)
+
+        if (!task) {
+          throw errors.notFound('任务不存在')
+        }
+
+        const date = input.checkin_date || todayOnly()
+        let record = one(await client.query(
+          `select * from checkin_record
+           where user_id = $1 and checkin_date = $2
+           limit 1`,
+          [userId, date]
+        ))
+
+        if (!record) {
+          const inserted = await client.query(
+            `insert into checkin_record
+             (user_id, plan_id, checkin_date, completion_rate, created_at, updated_at)
+             values ($1, $2, $3, 0, current_timestamp, current_timestamp)
+             returning *`,
+            [userId, task.plan_id, date]
+          )
+          record = one(inserted)
+        }
+
+        if (completed) {
+          await client.query(
+            `insert into checkin_item
+             (checkin_record_id, plan_task_id, task_type, actual_value, unit, status, detail_text, metadata, created_at)
+             values ($1, $2, $3, $4, $5, 'done', $6, $7::jsonb, current_timestamp)
+             on conflict (checkin_record_id, plan_task_id) do update set
+               status = 'done',
+               actual_value = excluded.actual_value,
+               unit = excluded.unit,
+               detail_text = excluded.detail_text,
+               metadata = excluded.metadata`,
+            [
+              record.id,
+              task.id,
+              task.task_type,
+              input.value === undefined ? 1 : Number.parseFloat(input.value) || 1,
+              input.unit || task.unit || null,
+              input.detail_text || task.title,
+              JSON.stringify({
+                source: input.source || 'plan_task_toggle',
+                recorded_at: input.recorded_at || null
+              })
+            ]
+          )
+        } else {
+          await client.query(
+            `delete from checkin_item
+             where checkin_record_id = $1 and plan_task_id = $2`,
+            [record.id, task.id]
+          )
+        }
+
+        const updatedRecord = await refreshCheckinCompletion(client, record.id, task.plan_id)
+        const completion = completed
+
+        return {
+          task_id: Number(task.id),
+          completed: completion,
+          checkin_record: updatedRecord
+        }
+      })
     },
 
     async getCheckinRecords(userId, { days = 7 } = {}) {
@@ -1143,6 +1565,55 @@ export function createSqlStore(pool) {
 
         return rows
       })
+    },
+
+    async listSystemMessages(userId) {
+      const result = await pool.query(
+        `select *
+         from system_message
+         where user_id = $1
+         order by created_at desc, id desc`,
+        [userId]
+      )
+      return result.rows
+    },
+
+    async upsertSystemMessage(userId, input = {}) {
+      const result = await pool.query(
+        `insert into system_message
+         (user_id, message_key, type, title, content, route_name, payload, read_at, created_at, updated_at)
+         values ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, current_timestamp, current_timestamp)
+         on conflict (user_id, message_key) do update set
+           type = excluded.type,
+           title = excluded.title,
+           content = excluded.content,
+           route_name = excluded.route_name,
+           payload = excluded.payload,
+           updated_at = current_timestamp
+         returning *`,
+        [
+          userId,
+          input.message_key || null,
+          input.type,
+          input.title,
+          input.content || null,
+          input.route_name || null,
+          JSON.stringify(input.payload || {}),
+          input.read_at || null
+        ]
+      )
+      return one(result)
+    },
+
+    async markAllSystemMessagesRead(userId) {
+      const result = await pool.query(
+        `update system_message
+         set read_at = current_timestamp,
+             updated_at = current_timestamp
+         where user_id = $1 and read_at is null`,
+        [userId]
+      )
+      return { updated: result.rowCount || 0 }
     }
   }
 }

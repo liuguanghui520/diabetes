@@ -10,82 +10,23 @@ import {
   SearchOutlined,
   StarOutlined,
 } from '@ant-design/icons-vue'
-import { apiGet } from '../../api/request'
+import { apiGet, apiPost } from '../../api/request'
 
 const router = useRouter()
-const FAVORITE_KEY = 'diafitFavoriteArticles'
 
 const keyword = ref('')
 const showSearch = ref(false)
 const toastText = ref('')
-const favoriteIds = ref(new Set(readFavoriteIds()))
 const articles = ref([])
-
-const fallbackArticles = [
-  {
-    id: 1,
-    author: '控糖饮食官方',
-    badge: '优质作者',
-    category: '饮食',
-    title: '早餐怎么吃，才能让上午血糖更平稳？',
-    summary: '主食、蛋白质和蔬菜搭配顺序很重要，先从一顿早餐开始调整。',
-    views: '1.3w',
-    likes: 45,
-    saves: 37,
-  },
-  {
-    id: 2,
-    author: '健康管理研究所',
-    badge: '科普',
-    category: '运动',
-    title: '饭后散步 20 分钟，对血糖有什么帮助？',
-    summary: '规律运动比一次剧烈运动更重要，轻中强度更容易长期坚持。',
-    views: '2703',
-    likes: 23,
-    saves: 25,
-  },
-  {
-    id: 3,
-    author: '筛查助手',
-    badge: '指南',
-    category: '筛查',
-    title: '除了血糖，这些指标也值得提前关注',
-    summary: '腰围、体重、血压和家族史同样影响筛查结果，资料不完整时不要急着下结论。',
-    views: '509',
-    likes: 17,
-    saves: 7,
-  },
-]
 
 const favoriteArticles = computed(() => {
   const text = keyword.value.trim()
 
   return articles.value.filter((item) => {
     const keywordMatch = !text || `${item.title}${item.summary}${item.author}${item.category}`.includes(text)
-    return hasFavorite(item.id) && keywordMatch
+    return keywordMatch
   })
 })
-
-function normalizeId(id) {
-  return String(id)
-}
-
-function hasFavorite(id) {
-  return favoriteIds.value.has(normalizeId(id))
-}
-
-function readFavoriteIds() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(FAVORITE_KEY) || '[]')
-    return Array.isArray(parsed) ? parsed.map(normalizeId) : []
-  } catch {
-    return []
-  }
-}
-
-function saveFavoriteIds(ids) {
-  localStorage.setItem(FAVORITE_KEY, JSON.stringify(Array.from(ids)))
-}
 
 function showToast(text) {
   toastText.value = text
@@ -96,21 +37,18 @@ function showToast(text) {
 
 async function loadArticles() {
   try {
-    const response = await apiGet('/api/articles?page=1&pageSize=30')
-    const source = response.data?.list || response.data?.articles || []
-    articles.value = source.length
-      ? source.map((item, index) => ({
-          ...fallbackArticles[index % fallbackArticles.length],
-          ...item,
-          author: item.author || item.source || fallbackArticles[index % fallbackArticles.length].author,
-          badge: item.badge || item.category || fallbackArticles[index % fallbackArticles.length].badge,
-          views: item.views || item.read_count || fallbackArticles[index % fallbackArticles.length].views,
-          likes: item.likes || fallbackArticles[index % fallbackArticles.length].likes,
-          saves: item.saves || fallbackArticles[index % fallbackArticles.length].saves,
-        }))
-      : fallbackArticles
+    const response = await apiGet('/api/articles/favorites?page=1&pageSize=50')
+    const source = response.data?.items || []
+    articles.value = source.map((item) => ({
+      ...item,
+      author: item.author || item.source || '健康编辑部',
+      badge: item.badge || item.category || '健康资讯',
+      views: item.view_count || item.views || 0,
+      likes: item.like_count || item.likes || 0,
+      saves: item.favorite_count || item.saves || 0,
+    }))
   } catch {
-    articles.value = fallbackArticles
+    articles.value = []
   }
 }
 
@@ -123,12 +61,14 @@ function openArticle(article) {
   })
 }
 
-function removeFavorite(article) {
-  const next = new Set(favoriteIds.value)
-  next.delete(normalizeId(article.id))
-  favoriteIds.value = next
-  saveFavoriteIds(next)
-  showToast('已从收藏移除')
+async function removeFavorite(article) {
+  try {
+    await apiPost(`/api/articles/${article.id}/favorite`, {})
+    articles.value = articles.value.filter((item) => item.id !== article.id)
+    showToast('已从收藏移除')
+  } catch (error) {
+    showToast(error.message || '移除收藏失败。')
+  }
 }
 
 function toggleSearch() {

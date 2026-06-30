@@ -5,6 +5,31 @@ function getWorkflowOutputs(data) {
   return data?.data?.outputs || data?.outputs || data?.data || data
 }
 
+function getWorkflowRunId(payload) {
+  return payload?.workflow_run_id || payload?.data?.workflow_run_id || payload?.data?.id || null
+}
+
+function getWorkflowTaskId(payload) {
+  return payload?.task_id || payload?.data?.task_id || null
+}
+
+function getTotalTokens(payload) {
+  return payload?.data?.total_tokens || payload?.metadata?.usage?.total_tokens || null
+}
+
+function getLogAppCode(appCode) {
+  return appCode === 'risk' ? 'risk_assessment' : appCode
+}
+
+function scheduleBackground(task) {
+  if (typeof setImmediate === 'function') {
+    setImmediate(task)
+    return
+  }
+
+  setTimeout(task, 0)
+}
+
 export function createDifyClient(config, overrides = {}) {
   const fetchImpl = overrides.fetch || globalThis.fetch
 
@@ -32,38 +57,160 @@ export function createDifyClient(config, overrides = {}) {
     return response
   }
 
-  return {
-    async runWorkflow(appCode, inputs, user, { requestId, store } = {}) {
-      const apiKey = config.dify.apiKeys[appCode]
-      const body = {
-        inputs,
-        response_mode: 'blocking',
-        user: String(user)
+  async function executeWorkflow(appCode, inputs, user, { signal } = {}) {
+    const apiKey = config.dify.apiKeys[appCode]
+    const body = {
+      inputs,
+      response_mode: 'blocking',
+      user: String(user)
+    }
+
+    const response = await request('/v1/workflows/run', apiKey, body, { signal })
+    const payload = await response.json()
+    const outputs = getWorkflowOutputs(payload)
+
+    return {
+      raw: payload,
+      outputs,
+      workflow_run_id: getWorkflowRunId(payload),
+      task_id: getWorkflowTaskId(payload),
+      total_tokens: getTotalTokens(payload)
+    }
+  }
+
+  async function createRunningLog({ appCode, inputs, user, requestId, store }) {
+    if (!store?.createDifyLog) {
+      return null
+    }
+
+    try {
+      return await store.createDifyLog({
+        user_id: Number.isFinite(Number(user)) ? Number(user) : null,
+        app_code: getLogAppCode(appCode),
+        app_type: 'workflow',
+        request_id: requestId || null,
+        inputs: maskSensitive(inputs),
+        outputs: {},
+        status: 'running'
+      })
+    } catch (error) {
+      console.error(`[dify] failed to create running log: ${error?.message || error}`)
+      return null
+    }
+  }
+
+  async function finishLog({ log, appCode, inputs, user, requestId, store, patch }) {
+    if (!store) {
+      return null
+    }
+
+    try {
+      if (log?.id && store.updateDifyLog) {
+        return await store.updateDifyLog(log.id, patch)
       }
 
+      if (store.createDifyLog) {
+        return await store.createDifyLog({
+          user_id: Number.isFinite(Number(user)) ? Number(user) : null,
+          app_code: getLogAppCode(appCode),
+          app_type: 'workflow',
+          request_id: requestId || null,
+          inputs: maskSensitive(inputs),
+          ...patch
+        })
+      }
+    } catch (error) {
+      console.error(`[dify] failed to finish log: ${error?.message || error}`)
+    }
+
+    return null
+  }
+
+  return {
+    async runWorkflow(appCode, inputs, user, { requestId, store } = {}) {
       const started = Date.now()
-      const response = await request('/v1/workflows/run', apiKey, body)
-      const payload = await response.json()
-      const outputs = getWorkflowOutputs(payload)
+      const result = await executeWorkflow(appCode, inputs, user)
 
       await store?.createDifyLog?.({
         user_id: Number.isFinite(Number(user)) ? Number(user) : null,
-        app_code: appCode === 'risk' ? 'risk_assessment' : appCode,
+        app_code: getLogAppCode(appCode),
         app_type: 'workflow',
         request_id: requestId || null,
-        workflow_run_id: payload?.workflow_run_id || payload?.data?.workflow_run_id || payload?.data?.id || null,
-        task_id: payload?.task_id || payload?.data?.task_id || null,
+        workflow_run_id: result.workflow_run_id,
+        task_id: result.task_id,
         inputs: maskSensitive(inputs),
-        outputs: maskSensitive(outputs),
+        outputs: maskSensitive(result.outputs),
         status: 'succeeded',
         elapsed_time: (Date.now() - started) / 1000,
-        total_tokens: payload?.data?.total_tokens || payload?.metadata?.usage?.total_tokens || null
+        total_tokens: result.total_tokens
+      })
+
+      return result
+    },
+
+    async enqueueWorkflow(appCode, inputs, user, { requestId, store, onSuccess, onFailure } = {}) {
+      const started = Date.now()
+      const log = await createRunningLog({ appCode, inputs, user, requestId, store })
+
+      scheduleBackground(async () => {
+        try {
+          const workflowResult = await executeWorkflow(appCode, inputs, user)
+          const domainResult = await onSuccess?.(workflowResult)
+
+          await finishLog({
+            log,
+            appCode,
+            inputs,
+            user,
+            requestId,
+            store,
+            patch: {
+              workflow_run_id: workflowResult.workflow_run_id,
+              task_id: workflowResult.task_id,
+              outputs: maskSensitive({
+                workflow_outputs: workflowResult.outputs,
+                result: domainResult || null
+              }),
+              status: 'succeeded',
+              elapsed_time: (Date.now() - started) / 1000,
+              total_tokens: workflowResult.total_tokens,
+              error_message: null
+            }
+          })
+        } catch (error) {
+          let failureResult = null
+
+          try {
+            failureResult = await onFailure?.(error)
+          } catch (callbackError) {
+            failureResult = {
+              callback_error: callbackError?.message || String(callbackError)
+            }
+          }
+
+          await finishLog({
+            log,
+            appCode,
+            inputs,
+            user,
+            requestId,
+            store,
+            patch: {
+              outputs: maskSensitive({
+                result: failureResult || null
+              }),
+              status: 'failed',
+              elapsed_time: (Date.now() - started) / 1000,
+              error_message: error?.message || String(error)
+            }
+          })
+        }
       })
 
       return {
-        raw: payload,
-        outputs,
-        workflow_run_id: payload?.workflow_run_id || payload?.data?.workflow_run_id || payload?.data?.id || null
+        request_id: requestId || null,
+        status: 'processing',
+        log_id: log?.id || null
       }
     },
 

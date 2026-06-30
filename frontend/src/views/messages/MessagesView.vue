@@ -14,8 +14,6 @@ import {
 } from '@ant-design/icons-vue'
 import { apiGet, apiPost } from '../../api/request'
 
-const UNREAD_KEY = 'diafitUnreadMessages'
-
 const router = useRouter()
 const activeFilter = ref('all')
 const messages = ref([])
@@ -37,57 +35,6 @@ const visibleMessages = computed(() => {
 })
 
 const unreadCount = computed(() => messages.value.filter((item) => !item.read).length)
-
-const fallbackMessages = [
-  {
-    id: 'archive',
-    title: '健康档案待完善',
-    content: '腰围、血压和家族史会影响风险判断，补齐后可以做正式评估。',
-    group: 'service',
-    tag: '档案',
-    tone: 'blue',
-    icon: FileProtectOutlined,
-    route: 'healthArchive',
-    time: new Date().toISOString(),
-    read: false,
-  },
-  {
-    id: 'review',
-    title: '复查提醒已生成',
-    content: '建议关注空腹血糖、餐后 2 小时血糖和 HbA1c，复查前先记录近期状态。',
-    group: 'reminder',
-    tag: '复查',
-    tone: 'orange',
-    icon: BellOutlined,
-    route: 'plan',
-    time: new Date(Date.now() - 1000 * 60 * 42).toISOString(),
-    read: false,
-  },
-  {
-    id: 'assistant',
-    title: '健康助手可以继续上次对话',
-    content: '已经保留最近一次咨询记录，可以直接接着问饮食、风险解释或报告怎么看。',
-    group: 'assistant',
-    tag: '助手',
-    tone: 'purple',
-    icon: MessageOutlined,
-    route: 'assistant',
-    time: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(),
-    read: true,
-  },
-  {
-    id: 'plan',
-    title: '今日生活方案待确认',
-    content: '饮食、运动、睡眠任务会根据你的档案和评估结果调整。',
-    group: 'service',
-    tag: '方案',
-    tone: 'green',
-    icon: CalendarOutlined,
-    route: 'plan',
-    time: new Date(Date.now() - 1000 * 60 * 60 * 25).toISOString(),
-    read: true,
-  },
-]
 
 function iconFor(type) {
   const icons = {
@@ -127,7 +74,6 @@ function normalizeMessage(item, index) {
 }
 
 function syncUnread() {
-  localStorage.setItem(UNREAD_KEY, String(unreadCount.value))
   window.dispatchEvent(
     new CustomEvent('diafit:messages-updated', {
       detail: { unread: unreadCount.value },
@@ -169,10 +115,9 @@ async function loadMessages() {
   try {
     const response = await apiGet('/api/messages')
     const source = response.data?.list || response.data?.messages || response.data || []
-    messages.value = (Array.isArray(source) && source.length ? source : fallbackMessages)
-      .map(normalizeMessage)
+    messages.value = Array.isArray(source) ? source.map(normalizeMessage) : []
   } catch {
-    messages.value = fallbackMessages
+    messages.value = []
   } finally {
     loading.value = false
     syncUnread()
@@ -191,9 +136,7 @@ async function markAllRead() {
 
   try {
     await apiPost('/api/messages/read-all', {})
-  } catch {
-    // Mock 或后端未接好时，前端状态先保持已读。
-  }
+  } catch {}
 }
 
 function openMessage(item) {

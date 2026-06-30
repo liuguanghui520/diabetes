@@ -8,6 +8,10 @@ function now() {
   return new Date().toISOString()
 }
 
+function todayOnly() {
+  return now().slice(0, 10)
+}
+
 export function createMemoryStore() {
   const state = {
     users: [],
@@ -257,6 +261,26 @@ export function createMemoryStore() {
       return clone(log)
     },
 
+    async updateDifyLog(id, patch = {}) {
+      const log = state.difyLogs.find((item) => item.id === Number(id))
+
+      if (!log) {
+        throw errors.notFound('Dify 运行日志不存在')
+      }
+
+      Object.assign(log, patch)
+      return clone(log)
+    },
+
+    async getDifyLogByRequestId(userId, requestId) {
+      return clone(state.difyLogs
+        .filter((log) => (
+          log.request_id === requestId &&
+          (!userId || log.user_id === Number(userId))
+        ))
+        .sort((left, right) => new Date(right.created_at) - new Date(left.created_at))[0] || null)
+    },
+
     async getUserContext(userId) {
       return {
         profile: await this.getProfile(userId),
@@ -307,39 +331,12 @@ export function createMemoryStore() {
     },
 
     async getArticleRecommendations({ page = 1, pageSize = 20 } = {}) {
-      const seededArticles = state.articles.length > 0
-        ? state.articles
-        : [
-            {
-              id: 'food-breakfast',
-              title: '早餐怎么吃，上午血糖更平稳？',
-              summary: '主食、蛋白质和蔬菜搭配顺序，会影响餐后血糖曲线。',
-              category: '控糖饮食',
-              read_time: '3 分钟阅读',
-              published_at: now()
-            },
-            {
-              id: 'walk-after-meal',
-              title: '饭后轻走 20 分钟有什么帮助？',
-              summary: '低强度、可持续的活动更适合日常控糖管理。',
-              category: '科学运动',
-              read_time: '4 分钟阅读',
-              published_at: now()
-            },
-            {
-              id: 'screening-fields',
-              title: '风险筛查为什么要看腰围和血压？',
-              summary: '腰围、血压、BMI 和家族史能共同提示代谢风险。',
-              category: '健康筛查',
-              read_time: '5 分钟阅读',
-              published_at: now()
-            }
-          ]
       const start = (Number(page) - 1) * Number(pageSize)
+      const items = clone(state.articles.slice(start, start + Number(pageSize)))
 
       return {
-        items: clone(seededArticles.slice(start, start + Number(pageSize))),
-        total: seededArticles.length,
+        items,
+        total: state.articles.length,
         page: Number(page),
         pageSize: Number(pageSize)
       }
@@ -379,41 +376,116 @@ export function createMemoryStore() {
       return { favorited: true }
     },
 
+    async toggleArticleLike(userId, articleId) {
+      const article = state.articles.find((item) => String(item.id) === String(articleId))
+
+      if (!article) {
+        throw errors.notFound('文章不存在')
+      }
+
+      state.articleLikes = state.articleLikes || []
+      const index = state.articleLikes.findIndex((item) => (
+        item.user_id === Number(userId) && String(item.article_id) === String(articleId)
+      ))
+
+      if (index >= 0) {
+        state.articleLikes.splice(index, 1)
+        article.like_count = Math.max(Number(article.like_count || 0) - 1, 0)
+        return { liked: false }
+      }
+
+      state.articleLikes.push({
+        id: state.articleLikes.length + 1,
+        user_id: Number(userId),
+        article_id: articleId,
+        created_at: now()
+      })
+      article.like_count = Number(article.like_count || 0) + 1
+      return { liked: true }
+    },
+
+    async listArticleComments(articleId, { userId = null } = {}) {
+      state.articleComments = state.articleComments || []
+      state.articleCommentLikes = state.articleCommentLikes || []
+
+      return clone(state.articleComments
+        .filter((comment) => String(comment.article_id) === String(articleId) && !comment.deleted_at)
+        .sort((left, right) => new Date(left.created_at) - new Date(right.created_at))
+        .map((comment) => {
+          const user = state.users.find((item) => item.id === Number(comment.user_id)) || {}
+          return {
+            ...comment,
+            username: user.username || '',
+            nickname: user.nickname || '',
+            liked: state.articleCommentLikes.some((item) => (
+              item.user_id === Number(userId) && item.comment_id === comment.id
+            ))
+          }
+        }))
+    },
+
+    async createArticleComment(userId, articleId, input) {
+      state.articleComments = state.articleComments || []
+      counters.articleComments = counters.articleComments || 1
+      const comment = {
+        id: counters.articleComments,
+        article_id: Number(articleId),
+        user_id: Number(userId),
+        parent_id: input.parent_id ? Number(input.parent_id) : null,
+        content: input.content,
+        like_count: 0,
+        created_at: now(),
+        updated_at: now(),
+        deleted_at: null
+      }
+      counters.articleComments += 1
+      state.articleComments.push(comment)
+      return clone(comment)
+    },
+
+    async toggleArticleCommentLike(userId, commentId) {
+      state.articleCommentLikes = state.articleCommentLikes || []
+      const comment = (state.articleComments || []).find((item) => item.id === Number(commentId) && !item.deleted_at)
+
+      if (!comment) {
+        throw errors.notFound('评论不存在')
+      }
+
+      const index = state.articleCommentLikes.findIndex((item) => (
+        item.user_id === Number(userId) && item.comment_id === Number(commentId)
+      ))
+
+      if (index >= 0) {
+        state.articleCommentLikes.splice(index, 1)
+        comment.like_count = Math.max(Number(comment.like_count || 0) - 1, 0)
+        comment.updated_at = now()
+        return { liked: false }
+      }
+
+      state.articleCommentLikes.push({
+        id: state.articleCommentLikes.length + 1,
+        user_id: Number(userId),
+        comment_id: Number(commentId),
+        created_at: now()
+      })
+      comment.like_count = Number(comment.like_count || 0) + 1
+      comment.updated_at = now()
+      return { liked: true }
+    },
+
     async getDoctorById(id) {
       return clone(state.doctors.find((doctor) => doctor.id === Number(id)) || null)
     },
 
-    async listDoctors() {
-      const seededDoctors = state.doctors.length > 0
-        ? state.doctors
-        : [
-            {
-              id: 1,
-              name: '赵晓峰',
-              title: '主任医师',
-              department: '内分泌科',
-              specialty: '糖尿病综合管理',
-              intro: '擅长糖尿病风险评估、用药随访和生活方式干预。',
-              online_status: 'online',
-              consult_status: 'online',
-              display_status: 'published',
-              sort_order: 1
-            },
-            {
-              id: 2,
-              name: '孙雅琴',
-              title: '副主任医师',
-              department: '内分泌科',
-              specialty: '妊娠糖尿病与饮食管理',
-              intro: '关注女性代谢健康和个体化饮食建议。',
-              online_status: 'online',
-              consult_status: 'online',
-              display_status: 'published',
-              sort_order: 2
-            }
-          ]
+    async listDoctors({ publishedOnly = true } = {}) {
+      const items = publishedOnly
+        ? state.doctors.filter((d) => d.display_status === 'published')
+        : [...state.doctors]
+      return clone(items)
+    },
 
-      return clone(seededDoctors)
+    async listDiabetesTypes() {
+      return clone(state.diabetesTypes)
     },
 
     async getActivePlan(userId) {
@@ -437,34 +509,7 @@ export function createMemoryStore() {
         })
       }
 
-      const latestRisk = await this.getLatestRisk(userId)
-
-      return {
-        id: 'default-active-plan',
-        title: '基础生活管理方案',
-        goal_summary: latestRisk?.risk_level === 'high'
-          ? '优先稳定餐后活动、饮食结构和复查节奏。'
-          : '保持记录习惯，逐步形成可持续的生活节奏。',
-        status: 'active',
-        tasks: [
-          {
-            id: 'plan-diet',
-            task_type: 'diet',
-            title: '记录三餐主食和蛋白质',
-            description: '先观察饮食结构，不急着大幅调整。',
-            target: '3次',
-            time: '早中晚'
-          },
-          {
-            id: 'plan-walk',
-            task_type: 'exercise',
-            title: '饭后轻走 20 分钟',
-            description: '选择最容易坚持的一餐开始。',
-            target: '20分',
-            time: '餐后'
-          }
-        ]
-      }
+      return null
     },
 
     async createPlan(input) {
@@ -568,6 +613,171 @@ export function createMemoryStore() {
       }
     },
 
+    async savePlanTask(userId, input) {
+      let plan = state.plans
+        .filter((item) => item.user_id === Number(userId) && item.status === 'active')
+        .sort((left, right) => new Date(right.updated_at) - new Date(left.updated_at))[0]
+
+      if (!plan) {
+        plan = {
+          id: counters.plans,
+          user_id: Number(userId),
+          risk_assessment_id: null,
+          title: '我的生活任务',
+          goal_summary: '手动维护的日常管理任务',
+          status: 'active',
+          start_date: todayOnly(),
+          end_date: todayOnly(),
+          preferences: {},
+          plan_json: { source: 'manual' },
+          dify_workflow_run_id: null,
+          created_at: now(),
+          updated_at: now()
+        }
+        counters.plans += 1
+        state.plans.push(plan)
+      }
+
+      if (input.id) {
+        const task = state.planTasks.find((item) => item.id === Number(input.id) && item.plan_id === plan.id)
+        if (!task) {
+          throw errors.notFound('任务不存在')
+        }
+        Object.assign(task, {
+          task_type: input.task_type || input.category || task.task_type,
+          title: input.title || task.title,
+          description: input.description || input.desc || input.content || '',
+          target_value: input.target_value ?? input.value ?? task.target_value ?? null,
+          unit: input.unit || task.unit || null,
+          target_time: input.target_time || input.time || null,
+          weekdays: input.weekdays || null,
+          metadata: input.metadata || task.metadata || {}
+        })
+        plan.updated_at = now()
+        return clone(task)
+      }
+
+      const sortOrder = state.planTasks
+        .filter((item) => item.plan_id === plan.id)
+        .reduce((max, item) => Math.max(max, Number(item.sort_order || 0)), -1) + 1
+      const task = {
+        id: counters.planTasks,
+        plan_id: plan.id,
+        task_type: input.task_type || input.category || 'review',
+        title: input.title || '健康管理任务',
+        description: input.description || input.desc || input.content || '',
+        target_value: input.target_value ?? input.value ?? null,
+        unit: input.unit || null,
+        target_time: input.target_time || input.time || null,
+        weekdays: input.weekdays || null,
+        sort_order: input.sort_order ?? sortOrder,
+        metadata: input.metadata || {},
+        created_at: now()
+      }
+      counters.planTasks += 1
+      state.planTasks.push(task)
+      plan.updated_at = now()
+      return clone(task)
+    },
+
+    async deletePlanTask(userId, taskId) {
+      const plan = state.plans.find((item) => item.user_id === Number(userId) && item.status === 'active')
+      if (!plan) {
+        throw errors.notFound('任务不存在')
+      }
+      const index = state.planTasks.findIndex((item) => item.id === Number(taskId) && item.plan_id === plan.id)
+      if (index < 0) {
+        throw errors.notFound('任务不存在')
+      }
+      state.planTasks.splice(index, 1)
+      state.checkinItems = state.checkinItems.filter((item) => item.plan_task_id !== Number(taskId))
+      return { deleted: true }
+    },
+
+    async listPlanTasks(userId) {
+      const plan = state.plans
+        .filter((item) => item.user_id === Number(userId) && item.status === 'active')
+        .sort((left, right) => new Date(right.updated_at) - new Date(left.updated_at))[0]
+      if (!plan) {
+        return []
+      }
+
+      return clone(state.planTasks
+        .filter((item) => item.plan_id === plan.id)
+        .sort((left, right) => left.sort_order - right.sort_order || left.id - right.id))
+    },
+
+    async setPlanTaskCompletion(userId, taskId, completed, input = {}) {
+      const plan = state.plans
+        .filter((item) => item.user_id === Number(userId) && item.status === 'active')
+        .sort((left, right) => new Date(right.updated_at) - new Date(left.updated_at))[0]
+      const task = state.planTasks.find((item) => item.id === Number(taskId) && item.plan_id === plan?.id)
+
+      if (!task) {
+        throw errors.notFound('任务不存在')
+      }
+
+      const date = input.checkin_date || todayOnly()
+      let record = state.checkinRecords.find((item) => (
+        item.user_id === Number(userId) && item.checkin_date === date
+      ))
+
+      if (!record) {
+        record = {
+          id: counters.checkinRecords,
+          user_id: Number(userId),
+          plan_id: plan.id,
+          checkin_date: date,
+          completion_rate: 0,
+          created_at: now(),
+          updated_at: now()
+        }
+        counters.checkinRecords += 1
+        state.checkinRecords.push(record)
+      }
+
+      const existingIndex = state.checkinItems.findIndex((item) => (
+        item.checkin_record_id === record.id && item.plan_task_id === Number(taskId)
+      ))
+
+      if (completed) {
+        const item = {
+          id: existingIndex >= 0 ? state.checkinItems[existingIndex].id : counters.checkinItems,
+          checkin_record_id: record.id,
+          plan_task_id: Number(taskId),
+          task_type: task.task_type,
+          actual_value: input.value === undefined ? 1 : Number.parseFloat(input.value) || 1,
+          unit: input.unit || task.unit || null,
+          status: 'done',
+          detail_text: input.detail_text || task.title,
+          metadata: {
+            source: input.source || 'plan_task_toggle',
+            recorded_at: input.recorded_at || null
+          },
+          created_at: existingIndex >= 0 ? state.checkinItems[existingIndex].created_at : now()
+        }
+        if (existingIndex >= 0) {
+          state.checkinItems.splice(existingIndex, 1, item)
+        } else {
+          counters.checkinItems += 1
+          state.checkinItems.push(item)
+        }
+      } else if (existingIndex >= 0) {
+        state.checkinItems.splice(existingIndex, 1)
+      }
+
+      const total = state.planTasks.filter((item) => item.plan_id === plan.id).length
+      const done = state.checkinItems.filter((item) => item.checkin_record_id === record.id && item.status === 'done').length
+      record.completion_rate = total > 0 ? Math.round((done / total) * 100) : 0
+      record.updated_at = now()
+
+      return {
+        task_id: Number(taskId),
+        completed,
+        checkin_record: clone(record)
+      }
+    },
+
     async getCheckinRecords(userId, { days = 7 } = {}) {
       const threshold = new Date()
       threshold.setDate(threshold.getDate() - (Math.max(1, Number(days || 7)) - 1))
@@ -588,22 +798,17 @@ export function createMemoryStore() {
 
     async getCheckinAnalysis(userId) {
       const records = await this.getCheckinRecords(userId, { days: 7 })
-      const expected = 14
       const done = records.reduce((total, record) => total + (record.items?.length || 0), 0)
+      const expected = Math.max(done, records.length * 2) || 1
       const completionRate = Math.min(100, Math.round((done / expected) * 100))
-      const strong = completionRate >= 60
 
       return {
         period_days: 7,
         completion_rate: completionRate,
         completed_count: done,
         expected_count: expected,
-        evaluation: strong
-          ? '您的饮食和运动打卡完成情况良好，说明生活管理节奏已经开始稳定。'
-          : '饮食执行存在缺口，运动计划完成不足，建议先把每天 2 次关键打卡固定下来。',
-        advice: strong
-          ? '继续保持饮食多样性和运动适度，避免过度疲劳，并定期复查血糖。'
-          : '设置手机提醒，优先落实早餐和晚餐记录；运动从饭后 15-20 分钟轻走开始。'
+        evaluation: `近 7 天完成 ${done} 次打卡。`,
+        advice: '请继续按时完成每日打卡任务。'
       }
     },
 
@@ -821,6 +1026,55 @@ export function createMemoryStore() {
         if (a.slot_code === b.slot_code) return a.sort_order - b.sort_order || a.id - b.id
         return a.slot_code.localeCompare(b.slot_code)
       }))
+    },
+
+    async listSystemMessages(userId) {
+      state.systemMessages = state.systemMessages || []
+      return clone(state.systemMessages
+        .filter((item) => item.user_id === Number(userId))
+        .sort((left, right) => new Date(right.created_at) - new Date(left.created_at) || right.id - left.id))
+    },
+
+    async upsertSystemMessage(userId, input = {}) {
+      state.systemMessages = state.systemMessages || []
+      counters.systemMessages = counters.systemMessages || 1
+      const index = state.systemMessages.findIndex((item) => (
+        item.user_id === Number(userId) && item.message_key === (input.message_key || null)
+      ))
+      const existing = index >= 0 ? state.systemMessages[index] : null
+      const item = {
+        id: existing?.id || counters.systemMessages,
+        user_id: Number(userId),
+        message_key: input.message_key || null,
+        type: input.type,
+        title: input.title,
+        content: input.content || null,
+        route_name: input.route_name || null,
+        payload: input.payload || {},
+        read_at: existing?.read_at || input.read_at || null,
+        created_at: existing?.created_at || now(),
+        updated_at: now()
+      }
+      if (existing) {
+        state.systemMessages.splice(index, 1, item)
+      } else {
+        counters.systemMessages += 1
+        state.systemMessages.push(item)
+      }
+      return clone(item)
+    },
+
+    async markAllSystemMessagesRead(userId) {
+      state.systemMessages = state.systemMessages || []
+      let updated = 0
+      state.systemMessages.forEach((item) => {
+        if (item.user_id === Number(userId) && !item.read_at) {
+          item.read_at = now()
+          item.updated_at = now()
+          updated += 1
+        }
+      })
+      return { updated }
     },
 
     async replaceHomeConfig(slots = [], adminUserId = null) {

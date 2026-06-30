@@ -15,7 +15,7 @@ import {
 } from '@ant-design/icons-vue'
 import LiquidTabBar from '../../components/navigation/LiquidTabBar.vue'
 import TopUserActions from '../../components/navigation/TopUserActions.vue'
-import { apiGet } from '../../api/request'
+import { apiGet, apiPost, getStoredUser, hasAuthSession } from '../../api/request'
 
 const router = useRouter()
 const route = useRoute()
@@ -25,79 +25,21 @@ const articles = ref([])
 const toastText = ref('')
 const selectedArticle = ref(null)
 const commentBlockRef = ref(null)
-const FAVORITE_KEY = 'diafitFavoriteArticles'
-const favoriteIds = ref(new Set(readFavoriteIds()))
-const likedIds = ref(new Set())
-const commentLikedIds = ref(new Set())
 const commentDraft = ref('')
 const replyTarget = ref(null)
-const userComments = ref([])
-const commentSeed = ref(100)
+const comments = ref([])
+const loadingDetail = ref(false)
+const submittingComment = ref(false)
 
 const categories = ['热点', '推荐', '饮食', '运动', '筛查', '管理', '血糖', '复查', '并发症', '指南', '直播']
 
 const isFavoritesMode = computed(() => route.query.favorites === '1')
 
-const fallbackArticles = [
-  {
-    id: 1,
-    author: '控糖饮食官方',
-    badge: '优质作者',
-    category: '饮食',
-    title: '早餐怎么吃，才能让上午血糖更平稳？',
-    summary: '主食、蛋白质和蔬菜搭配顺序很重要，先从一顿早餐开始调整。',
-    detail: '早餐可以先吃蔬菜和蛋白质，再吃主食。主食不要完全不吃，优先选择杂粮、全麦或小份量米面，并观察餐后 2 小时血糖变化。',
-    paragraphs: [
-      '早餐可以先吃蔬菜和蛋白质，再吃主食。这样做不是为了制造复杂规则，而是让吸收速度更平稳，上午不容易忽高忽低。',
-      '主食不要完全不吃。完全不吃主食容易让下一餐更饿，也会影响长期执行。可以把白粥、油条、甜面包换成全麦面包、燕麦、杂粮饭或小份量米面。',
-      '如果你正在记录血糖，建议同时看空腹血糖和餐后 2 小时血糖。连续几天观察后，再决定早餐结构是否需要继续调整。',
-    ],
-    views: '1.3w',
-    likes: 45,
-    saves: 37,
-  },
-  {
-    id: 2,
-    author: '健康管理研究所',
-    badge: '科普',
-    category: '运动',
-    title: '饭后散步 20 分钟，对血糖有什么帮助？',
-    summary: '规律运动比一次剧烈运动更重要，轻中强度更容易长期坚持。',
-    detail: '饭后 20-30 分钟低到中等强度步行，常比偶尔高强度运动更容易稳定执行。若有低血糖风险、足部问题或心血管疾病，应先咨询医生。',
-    paragraphs: [
-      '饭后散步的重点不是速度，而是让身体轻轻动起来。饭后 20-30 分钟开始，步行 15-20 分钟，通常比偶尔一次高强度训练更容易坚持。',
-      '如果刚开始运动，不建议追求大汗淋漓。可以用“能说话但不想唱歌”的强度做参考，先保证每周稳定完成。',
-      '有低血糖风险、足部破损、心血管疾病或明显不适时，先咨询医生，再决定运动强度。',
-    ],
-    views: '2703',
-    likes: 23,
-    saves: 25,
-    thumb: true,
-  },
-  {
-    id: 3,
-    author: '筛查助手',
-    badge: '指南',
-    category: '筛查',
-    title: '除了血糖，这些指标也值得提前关注',
-    summary: '腰围、体重、血压和家族史同样影响筛查结果，资料不完整时不要急着下结论。',
-    detail: '中国糖尿病风险评分会关注年龄、性别、腰围、收缩压、体重指数和家族史。缺少腰围或收缩压时，只能做预评估，不能输出正式风险等级。',
-    paragraphs: [
-      '血糖很重要，但筛查并不只看血糖。年龄、性别、腰围、收缩压、体重指数和家族史都会影响中国糖尿病风险评分。',
-      '腰围和收缩压是正式评分项。缺少它们时，系统只能提示已知风险因素，不能直接给出正式高低风险结论。',
-      '如果你还没有近期体检报告，可以先在家测量腰围和血压，再补充到健康档案里。',
-    ],
-    views: '509',
-    likes: 17,
-    saves: 7,
-  },
-]
-
 const visibleArticles = computed(() => {
   const text = keyword.value.trim()
 
   return articles.value.filter((item) => {
-    if (isFavoritesMode.value && !favoriteIds.value.has(item.id)) {
+    if (isFavoritesMode.value && !item.favorited) {
       return false
     }
 
@@ -113,60 +55,10 @@ const visibleArticles = computed(() => {
 const articleParagraphs = computed(() => {
   if (!selectedArticle.value) return []
 
-  if (Array.isArray(selectedArticle.value.paragraphs) && selectedArticle.value.paragraphs.length) {
-    return selectedArticle.value.paragraphs
-  }
-
   return [
-    selectedArticle.value.detail || selectedArticle.value.summary,
+    selectedArticle.value.content || selectedArticle.value.detail || selectedArticle.value.summary,
     '这篇内容仅用于健康管理参考。若出现持续异常血糖、明显不适或用药相关问题，请及时咨询医生。',
   ].filter(Boolean)
-})
-
-function readFavoriteIds() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(FAVORITE_KEY) || '[]')
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-}
-
-function saveFavoriteIds(ids) {
-  localStorage.setItem(FAVORITE_KEY, JSON.stringify(Array.from(ids)))
-}
-
-const articleComments = computed(() => {
-  const title = selectedArticle.value?.title || '这篇内容'
-  const articleId = String(selectedArticle.value?.id || '')
-  const baseComments = [
-    {
-      id: 1,
-      user: '晨间记录员',
-      text: `${title}，这个思路挺实用，我准备先从早餐顺序开始记录。`,
-      likes: 12,
-      time: '2 小时前',
-    },
-    {
-      id: 2,
-      user: '稳一点',
-      text: '比单纯说少吃更容易照着做，尤其是先看餐后 2 小时变化这一点很有帮助。',
-      likes: 8,
-      time: '昨天 18:20',
-    },
-    {
-      id: 3,
-      user: '复查前一天',
-      text: '收藏了，准备和健康档案一起补齐，后面再让助手帮我整理复查问题。',
-      likes: 5,
-      time: '3 天前',
-    },
-  ]
-
-  return [
-    ...baseComments,
-    ...userComments.value.filter((item) => item.articleId === articleId),
-  ]
 })
 
 const commentPlaceholder = computed(() => {
@@ -178,8 +70,10 @@ const commentPlaceholder = computed(() => {
 })
 
 const hasUserCommented = computed(() => {
-  const articleId = String(selectedArticle.value?.id || '')
-  return userComments.value.some((item) => item.articleId === articleId)
+  const currentUser = getStoredUser()
+  if (!currentUser) return false
+
+  return comments.value.some((item) => item.user === (currentUser.nickname || currentUser.username))
 })
 
 function showToast(text) {
@@ -189,83 +83,144 @@ function showToast(text) {
   }, 2200)
 }
 
+function normalizeArticle(item) {
+  return {
+    ...item,
+    author: item.author || item.source || '健康编辑部',
+    badge: item.badge || item.category || '健康资讯',
+    views: item.view_count || item.views || 0,
+    likes: item.like_count || item.likes || 0,
+    saves: item.favorite_count || item.saves || 0,
+    favorited: Boolean(item.favorited),
+    liked: Boolean(item.liked),
+  }
+}
+
 function applyRouteArticle() {
   const targetId = String(route.query.article || '')
   if (!targetId) return
 
   const matched = articles.value.find((item) => String(item.id) === targetId)
   if (matched) {
-    selectedArticle.value = matched
+    openArticle(matched)
   }
 }
 
 async function loadArticles() {
   try {
-    const response = await apiGet('/api/articles?page=1&pageSize=20')
-    const source = response.data?.list || response.data?.articles || []
-    articles.value = source.length > 0
-      ? source.map((item, index) => ({
-          ...fallbackArticles[index % fallbackArticles.length],
-          ...item,
-          author: item.author || item.source || fallbackArticles[index % fallbackArticles.length].author,
-          badge: item.badge || item.category || '健康资讯',
-          views: item.views || item.read_count || fallbackArticles[index % fallbackArticles.length].views,
-          likes: item.likes || 12 + index,
-          saves: item.saves || 8 + index,
-        }))
-      : fallbackArticles
-    applyRouteArticle()
+    const path = isFavoritesMode.value
+      ? '/api/articles/favorites?page=1&pageSize=50'
+      : '/api/articles?page=1&pageSize=50'
+    const response = await apiGet(path)
+    const source = response.data?.items || response.data?.list || response.data?.articles || []
+    articles.value = source.map(normalizeArticle)
   } catch {
-    articles.value = fallbackArticles
-    applyRouteArticle()
+    articles.value = []
   }
 }
 
-function openArticle(article) {
-  selectedArticle.value = article
-  router.replace({
-    name: 'news',
-    query: {
-      article: article.id,
-    },
-  })
+async function loadComments(articleId) {
+  try {
+    const response = await apiGet(`/api/articles/${articleId}/comments`)
+    comments.value = response.data?.items || []
+  } catch {
+    comments.value = []
+  }
+}
+
+async function openArticle(article) {
+  loadingDetail.value = true
+
+  try {
+    const response = await apiGet(`/api/articles/${article.id}`)
+    selectedArticle.value = normalizeArticle({
+      ...article,
+      ...(response.data || {}),
+      detail: response.data?.content || response.data?.summary || article.summary,
+    })
+    await loadComments(article.id)
+    router.replace({
+      name: 'news',
+      query: {
+        article: article.id,
+      },
+    })
+  } catch (error) {
+    showToast(error.message || '文章详情加载失败。')
+  } finally {
+    loadingDetail.value = false
+  }
 }
 
 function closeArticle() {
   selectedArticle.value = null
   commentDraft.value = ''
   replyTarget.value = null
+  comments.value = []
   router.replace({ name: 'news' })
 }
 
-function toggleFavorite(article) {
-  const next = new Set(favoriteIds.value)
-
-  if (next.has(article.id)) {
-    next.delete(article.id)
-    showToast('已取消收藏。')
-  } else {
-    next.add(article.id)
-    showToast('已收藏到个人中心。')
+async function toggleFavorite(article) {
+  if (!hasAuthSession()) {
+    showToast('请先登录后再收藏。')
+    return
   }
 
-  favoriteIds.value = next
-  saveFavoriteIds(next)
+  try {
+    const result = await apiPost(`/api/articles/${article.id}/favorite`, {})
+    const favorited = Boolean(result.data?.favorited)
+    const delta = favorited ? 1 : -1
+
+    articles.value = articles.value.map((item) => item.id === article.id
+      ? { ...item, favorited, saves: Math.max(0, Number(item.saves || 0) + delta) }
+      : item)
+
+    if (selectedArticle.value?.id === article.id) {
+      selectedArticle.value = {
+        ...selectedArticle.value,
+        favorited,
+        saves: Math.max(0, Number(selectedArticle.value.saves || 0) + delta),
+      }
+    }
+
+    showToast(favorited ? '已收藏。' : '已取消收藏。')
+
+    if (isFavoritesMode.value) {
+      await loadArticles()
+    }
+  } catch (error) {
+    showToast(error.message || '收藏操作失败。')
+  }
 }
 
-function toggleLike(article) {
-  const next = new Set(likedIds.value)
-
-  if (next.has(article.id)) {
-    next.delete(article.id)
-  } else {
-    next.add(article.id)
+async function toggleLike(article) {
+  if (!hasAuthSession()) {
+    showToast('请先登录后再点赞。')
+    return
   }
 
-  likedIds.value = next
+  try {
+    const result = await apiPost(`/api/articles/${article.id}/like`, {})
+    const liked = Boolean(result.data?.liked)
+    const delta = liked ? 1 : -1
+
+    articles.value = articles.value.map((item) => item.id === article.id
+      ? { ...item, liked, likes: Math.max(0, Number(item.likes || 0) + delta) }
+      : item)
+
+    if (selectedArticle.value?.id === article.id) {
+      selectedArticle.value = {
+        ...selectedArticle.value,
+        liked,
+        likes: Math.max(0, Number(selectedArticle.value.likes || 0) + delta),
+      }
+    }
+  } catch (error) {
+    showToast(error.message || '点赞失败。')
+  }
 }
 
-function submitComment() {
+async function submitComment() {
   const text = commentDraft.value.trim()
 
   if (!text) {
@@ -273,36 +228,49 @@ function submitComment() {
     return
   }
 
-  userComments.value.unshift({
-    id: commentSeed.value++,
-    articleId: String(selectedArticle.value?.id || ''),
-    user: '我',
-    text,
-    likes: 0,
-    time: '刚刚',
-    replyTo: replyTarget.value?.user || '',
-  })
-
-  showToast(replyTarget.value ? '回复已发布。' : '评论已发布。')
-  commentDraft.value = ''
-  replyTarget.value = null
-}
-
-function toggleCommentLike(comment) {
-  const key = String(comment.id)
-  const next = new Set(commentLikedIds.value)
-
-  if (next.has(key)) {
-    next.delete(key)
-  } else {
-    next.add(key)
+  if (!hasAuthSession()) {
+    showToast('请先登录后再评论。')
+    return
   }
 
-  commentLikedIds.value = next
+  submittingComment.value = true
+  try {
+    const response = await apiPost(`/api/articles/${selectedArticle.value.id}/comments`, {
+      content: text,
+      parent_id: replyTarget.value?.id || null,
+    })
+    comments.value = [...comments.value, response.data]
+    showToast(replyTarget.value ? '回复已发布。' : '评论已发布。')
+    commentDraft.value = ''
+    replyTarget.value = null
+  } catch (error) {
+    showToast(error.message || '评论发布失败。')
+  } finally {
+    submittingComment.value = false
+  }
+}
+
+async function toggleCommentLike(comment) {
+  if (!hasAuthSession()) {
+    showToast('请先登录后再点赞评论。')
+    return
+  }
+
+  try {
+    const result = await apiPost(`/api/articles/${selectedArticle.value.id}/comments/${comment.id}/like`, {})
+    const liked = Boolean(result.data?.liked)
+    const delta = liked ? 1 : -1
+
+    comments.value = comments.value.map((item) => item.id === comment.id
+      ? { ...item, liked, like_count: Math.max(0, Number(item.like_count || 0) + delta) }
+      : item)
+  } catch (error) {
+    showToast(error.message || '评论点赞失败。')
+  }
 }
 
 function getCommentLikes(comment) {
-  return Number(comment.likes || 0) + (commentLikedIds.value.has(String(comment.id)) ? 1 : 0)
+  return Number(comment.like_count || 0)
 }
 
 function replyToComment(comment) {
@@ -325,7 +293,10 @@ function clearFavoritesMode() {
   router.replace({ name: 'news' })
 }
 
-onMounted(loadArticles)
+onMounted(async () => {
+  await loadArticles()
+  applyRouteArticle()
+})
 </script>
 
 <template>
@@ -406,8 +377,8 @@ onMounted(loadArticles)
               <span><StarOutlined /> {{ article.saves }}</span>
               <button
                 type="button"
-                :aria-label="favoriteIds.has(article.id) ? '取消收藏' : '收藏文章'"
-                :class="{ collected: favoriteIds.has(article.id) }"
+                :aria-label="article.favorited ? '取消收藏' : '收藏文章'"
+                :class="{ collected: article.favorited }"
                 @click.stop="toggleFavorite(article)"
               >
                 <MoreOutlined />
@@ -436,6 +407,10 @@ onMounted(loadArticles)
         </header>
 
         <div class="detail-scroll">
+          <div v-if="loadingDetail" class="empty-feed">
+            <strong>正在加载文章详情</strong>
+            <small>请稍候。</small>
+          </div>
           <h1>{{ selectedArticle.title }}</h1>
 
           <section class="detail-author">
@@ -461,7 +436,7 @@ onMounted(loadArticles)
           </section>
 
           <section ref="commentBlockRef" class="comment-block">
-            <h2>评论 {{ articleComments.length }}</h2>
+            <h2>评论 {{ comments.length }}</h2>
             <form class="comment-input" @submit.prevent="submitComment">
               <input
                 v-model="commentDraft"
@@ -470,56 +445,60 @@ onMounted(loadArticles)
                 aria-label="输入评论"
                 :placeholder="commentPlaceholder"
               />
-              <button type="submit">发送</button>
+              <button type="submit" :disabled="submittingComment">发送</button>
             </form>
 
-            <article v-for="comment in articleComments" :key="comment.id" class="comment-row">
+            <article v-for="comment in comments" :key="comment.id" class="comment-row">
               <span class="comment-avatar">{{ comment.user.slice(0, 1) }}</span>
               <div>
                 <header>
                   <strong>{{ comment.user }}</strong>
                   <button
-                    :aria-label="commentLikedIds.has(String(comment.id)) ? '取消点赞评论' : '点赞评论'"
+                    :aria-label="comment.liked ? '取消点赞评论' : '点赞评论'"
                     type="button"
-                    :class="{ active: commentLikedIds.has(String(comment.id)) }"
+                    :class="{ active: comment.liked }"
                     @click="toggleCommentLike(comment)"
                   >
-                    <LikeFilled v-if="commentLikedIds.has(String(comment.id))" />
+                    <LikeFilled v-if="comment.liked" />
                     <LikeOutlined v-else />
                     {{ getCommentLikes(comment) }}
                   </button>
                 </header>
-                <small v-if="comment.replyTo" class="reply-label">回复 {{ comment.replyTo }}</small>
-                <p>{{ comment.text }}</p>
+                <small v-if="comment.parent_id" class="reply-label">回复上级评论</small>
+                <p>{{ comment.content }}</p>
                 <small class="comment-actions">
                   <button type="button" @click="replyToComment(comment)">回复</button>
-                  <span>{{ comment.time }}</span>
+                  <span>{{ new Date(comment.created_at).toLocaleString('zh-CN') }}</span>
                 </small>
               </div>
             </article>
+            <div v-if="comments.length === 0" class="empty-feed">
+              <strong>还没有评论</strong>
+              <small>第一条评论会直接写入数据库。</small>
+            </div>
           </section>
         </div>
 
         <footer class="detail-toolbar">
           <button
             type="button"
-            :aria-label="likedIds.has(selectedArticle.id) ? '取消点赞文章' : '点赞文章'"
-            :class="{ active: likedIds.has(selectedArticle.id) }"
+            :aria-label="selectedArticle.liked ? '取消点赞文章' : '点赞文章'"
+            :class="{ active: selectedArticle.liked }"
             @click="toggleLike(selectedArticle)"
           >
-            <LikeFilled v-if="likedIds.has(selectedArticle.id)" />
+            <LikeFilled v-if="selectedArticle.liked" />
             <LikeOutlined v-else />
-            <span>{{ likedIds.has(selectedArticle.id) ? Number(selectedArticle.likes || 0) + 1 : selectedArticle.likes || 0 }} 赞</span>
+            <span>{{ selectedArticle.likes || 0 }} 赞</span>
           </button>
           <button
             type="button"
-            :aria-label="favoriteIds.has(selectedArticle.id) ? '取消收藏文章' : '收藏文章'"
-            :class="{ active: favoriteIds.has(selectedArticle.id) }"
+            :aria-label="selectedArticle.favorited ? '取消收藏文章' : '收藏文章'"
+            :class="{ active: selectedArticle.favorited }"
             @click="toggleFavorite(selectedArticle)"
           >
-            <StarFilled v-if="favoriteIds.has(selectedArticle.id)" />
+            <StarFilled v-if="selectedArticle.favorited" />
             <StarOutlined v-else />
-            <span>{{ favoriteIds.has(selectedArticle.id) ? '已藏' : '收藏' }}</span>
+            <span>{{ selectedArticle.favorited ? '已藏' : '收藏' }}</span>
           </button>
           <button type="button" aria-label="查看评论" :class="{ active: hasUserCommented }" @click="scrollToComments">
             <MessageFilled v-if="hasUserCommented" />

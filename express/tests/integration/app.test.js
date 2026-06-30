@@ -82,13 +82,22 @@ describe('Express API', () => {
     expect(response.status).toBe(200)
     expect(response.body.data.score).toBe(37)
     expect(response.body.data.risk_level).toBe('high')
-    expect(response.body.data.advice.summary).toBeTruthy()
+    expect(response.body.data.status).toBe('processing')
+    expect(response.body.data.workflow.request_id).toBeTruthy()
     expect(difyClient.calls.workflows[0].inputs.score_detail).toMatchObject({
       age: 18,
       bmi: 3,
       waist: 7,
       sbp: 1
     })
+
+    const workflow = await request(app)
+      .get(`/api/workflow-runs/${response.body.data.workflow.request_id}`)
+      .set('Authorization', `Bearer ${token}`)
+
+    expect(workflow.status).toBe(200)
+    expect(workflow.body.data.status).toBe('succeeded')
+    expect(workflow.body.data.result.score).toBe(37)
 
     const repeated = await request(app)
       .post('/api/risk-assessments')
@@ -182,8 +191,16 @@ describe('Express API', () => {
         }
       })
     expect(plan.status).toBe(200)
-    expect(plan.body.data.plan.title).toBeTruthy()
-    expect(plan.body.data.plan.tasks.length).toBeGreaterThan(0)
+    expect(plan.body.data.workflow.status).toBe('processing')
+    expect(plan.body.data.workflow.request_id).toBeTruthy()
+
+    const planWorkflow = await request(app)
+      .get(`/api/workflow-runs/${plan.body.data.workflow.request_id}`)
+      .set('Authorization', `Bearer ${token}`)
+    expect(planWorkflow.status).toBe(200)
+    expect(planWorkflow.body.data.status).toBe('succeeded')
+    expect(planWorkflow.body.data.result.plan.title).toBeTruthy()
+    expect(planWorkflow.body.data.result.plan.tasks.length).toBeGreaterThan(0)
 
     await request(app)
       .post('/api/checkins')
@@ -200,8 +217,16 @@ describe('Express API', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({ days: 7 })
     expect(analysis.status).toBe(200)
-    expect(analysis.body.data.report_id).toBeTruthy()
-    expect(analysis.body.data.workflow_run_id).toBe('mock_checkin_workflow_run_id')
+    expect(analysis.body.data.status).toBe('processing')
+    expect(analysis.body.data.request_id).toBeTruthy()
+
+    const analysisWorkflow = await request(app)
+      .get(`/api/workflow-runs/${analysis.body.data.request_id}`)
+      .set('Authorization', `Bearer ${token}`)
+    expect(analysisWorkflow.status).toBe(200)
+    expect(analysisWorkflow.body.data.status).toBe('succeeded')
+    expect(analysisWorkflow.body.data.result.report_id).toBeTruthy()
+    expect(analysisWorkflow.body.data.result.workflow_run_id).toBe('mock_checkin_workflow_run_id')
 
     const report = await request(app)
       .post('/api/reports/interpret')
@@ -210,7 +235,15 @@ describe('Express API', () => {
         report_text: '空腹血糖 6.4 mmol/L，糖化血红蛋白 6.1%。'
       })
     expect(report.status).toBe(200)
-    expect(report.body.data.status).toBe('pending_confirm')
+    expect(report.body.data.status).toBe('processing')
+    expect(report.body.data.request_id).toBeTruthy()
+
+    const reportWorkflow = await request(app)
+      .get(`/api/workflow-runs/${report.body.data.request_id}`)
+      .set('Authorization', `Bearer ${token}`)
+    expect(reportWorkflow.status).toBe(200)
+    expect(reportWorkflow.body.data.status).toBe('succeeded')
+    expect(reportWorkflow.body.data.result.status).toBe('pending_confirm')
     expect(difyClient.calls.workflows.map((item) => item.appCode)).toEqual(
       expect.arrayContaining(['plan', 'checkin', 'report'])
     )

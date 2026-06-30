@@ -11,7 +11,6 @@ import {
   SmileOutlined,
 } from '@ant-design/icons-vue'
 import { apiGet, authorizedFetch } from '../../api/request'
-import { doctorFilters, doctors } from '../../data/doctors'
 
 const router = useRouter()
 const route = useRoute()
@@ -27,7 +26,7 @@ const filterStripRef = ref(null)
 const doctorFileInput = ref(null)
 const doctorFileAccept = ref('.pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg')
 const pendingFiles = ref([])
-const doctorList = ref(doctors)
+const doctorList = ref([])
 const threads = reactive({})
 const readDoctorIds = ref(new Set())
 const filterDrag = reactive({
@@ -37,9 +36,17 @@ const filterDrag = reactive({
   scrollLeft: 0,
 })
 
-const filters = doctorFilters
+const filters = computed(() => {
+  const values = new Set(['全部'])
+  doctorList.value.forEach((doctor) => {
+    ;(doctor.tags || []).forEach((tag) => {
+      if (tag) values.add(tag)
+    })
+  })
+  return Array.from(values).slice(0, 8)
+})
 
-const currentDoctor = computed(() => doctorList.value.find((item) => item.id === activeDoctor.value) || doctorList.value[0] || doctors[0])
+const currentDoctor = computed(() => doctorList.value.find((item) => item.id === activeDoctor.value) || doctorList.value[0] || null)
 
 const filteredDoctors = computed(() => {
   const query = keyword.value.trim().toLowerCase()
@@ -90,7 +97,9 @@ function goBack() {
 
 function getThread(id) {
   if (!threads[id]) {
-    const doctor = doctorList.value.find((item) => item.id === id) || doctors[0]
+    const doctor = doctorList.value.find((item) => item.id === id) || currentDoctor.value || {
+      greeting: '你好，可以把近期血糖、复查指标和问题发来。'
+    }
     threads[id] = [
       { role: 'time', content: '刚刚' },
       { role: 'assistant', content: doctor.greeting },
@@ -303,16 +312,14 @@ async function loadDoctors() {
   try {
     const result = await apiGet('/api/doctors', { auth: false })
     const items = result.data?.items || []
-    if (items.length) {
-      doctorList.value = items.map(normalizeDoctor)
-    }
+    doctorList.value = items.map(normalizeDoctor)
   } catch {
-    doctorList.value = doctors
+    doctorList.value = []
   }
 }
 
-onMounted(() => {
-  loadDoctors()
+onMounted(async () => {
+  await loadDoctors()
   const doctorId = Number(route.query.doctor || 0)
   const doctor = doctorList.value.find((item) => item.id === doctorId)
   if (doctor) {

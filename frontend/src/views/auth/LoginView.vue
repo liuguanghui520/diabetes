@@ -1,10 +1,11 @@
 <script setup>
 import { computed, onBeforeUnmount, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { loginByPassword, registerByPassword } from '../../api/auth'
-import { ApiRequestError, isMockMode } from '../../api/request'
+import { ApiRequestError } from '../../api/request'
 
 const router = useRouter()
+const route = useRoute()
 
 const mode = ref('login')
 const account = ref('')
@@ -15,8 +16,6 @@ const showPassword = ref(false)
 const focusedField = ref('')
 const submitting = ref(false)
 const noticeText = ref('')
-
-const isMock = isMockMode()
 
 let noticeTimer = null
 let redirectTimer = null
@@ -115,8 +114,10 @@ async function handleSubmit() {
   submitting.value = true
 
   try {
+    let session
+
     if (isRegister.value) {
-      await registerByPassword({
+      session = await registerByPassword({
         username: account.value.trim(),
         password: password.value,
         nickname: account.value.trim(),
@@ -124,7 +125,7 @@ async function handleSubmit() {
 
       showNotice('账户创建成功，正在进入健康空间。')
     } else {
-      await loginByPassword(
+      session = await loginByPassword(
         account.value.trim(),
         password.value,
       )
@@ -133,7 +134,14 @@ async function handleSubmit() {
     }
 
     redirectTimer = window.setTimeout(() => {
-      router.replace('/home')
+      const role = session?.user?.role
+      const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : ''
+      const safeRedirect = redirect.startsWith('/') ? redirect : ''
+      const target = ['admin', 'super_admin'].includes(role)
+        ? '/admin/dashboard'
+        : safeRedirect || '/home'
+
+      router.replace(target)
     }, 520)
   } catch (error) {
     showNotice(getErrorMessage(error))
@@ -143,11 +151,7 @@ async function handleSubmit() {
 }
 
 function openPhoneLogin() {
-  showNotice(isMock ? '当前演示使用账号密码登录，测试账号可一键填入。' : '请使用已注册账号和密码登录。')
-}
-
-function enterGuestMode() {
-  router.push('/home')
+  showNotice('请使用已注册账号和密码登录。')
 }
 
 function openPrivacy() {
@@ -156,15 +160,6 @@ function openPrivacy() {
 
 function openHealthDataInfo() {
   showNotice('健康数据属于敏感信息，可在个人中心关闭智能分析上下文。')
-}
-
-function fillMockAccount() {
-  mode.value = 'login'
-  account.value = 'demo'
-  password.value = '123456'
-  agreed.value = true
-
-  showNotice('已填入模拟测试账号。')
 }
 
 onBeforeUnmount(() => {
@@ -458,15 +453,6 @@ onBeforeUnmount(() => {
             </i>
           </button>
 
-          <button
-            v-if="isMock && !isRegister"
-            class="mock-account-button"
-            type="button"
-            @click="fillMockAccount"
-          >
-            <span></span>
-            一键填入测试账号：demo / 123456
-          </button>
         </form>
       </section>
 
@@ -498,26 +484,6 @@ onBeforeUnmount(() => {
               <small>手机号登录</small>
             </button>
 
-            <button type="button" @click="enterGuestMode">
-              <span class="option-icon">
-                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <circle
-                    cx="12"
-                    cy="12"
-                    r="7.3"
-                    stroke="currentColor"
-                    stroke-width="1.7"
-                  />
-                  <path
-                    d="M9.4 14.6L10.7 10.7L14.6 9.4L13.3 13.3L9.4 14.6Z"
-                    stroke="currentColor"
-                    stroke-width="1.7"
-                    stroke-linejoin="round"
-                  />
-                </svg>
-              </span>
-              <small>暂时浏览</small>
-            </button>
           </div>
 
           <button class="register-prompt" type="button" @click="switchMode('register')">
@@ -1026,26 +992,6 @@ onBeforeUnmount(() => {
   animation: loading-spin 0.8s linear infinite;
 }
 
-.mock-account-button {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  border: 0;
-  margin-top: 11px;
-  padding: 0;
-  color: #5f7da8;
-  background: transparent;
-  cursor: pointer;
-  font-size: 9px;
-}
-
-.mock-account-button > span {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #3ac5ad;
-}
-
 .login-footer {
   position: relative;
   z-index: 2;
@@ -1213,8 +1159,7 @@ onBeforeUnmount(() => {
 .password-button:active,
 .footer-options button:active,
 .register-prompt:active,
-.login-prompt:active,
-.mock-account-button:active {
+.login-prompt:active {
   transform: scale(0.95);
 }
 

@@ -11,6 +11,22 @@ const planSchema = z.object({
   goal: z.string().max(500).optional()
 })
 
+const planTaskSchema = z.object({
+  id: z.union([z.number().int(), z.string()]).optional(),
+  category: z.enum(['diet', 'exercise', 'water', 'sleep', 'glucose', 'review']),
+  title: z.string().min(1).max(128),
+  desc: z.string().max(500).optional(),
+  target: z.string().max(64).optional(),
+  time: z.string().max(64).optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional()
+})
+
+const planTaskCompleteSchema = z.object({
+  completed: z.boolean(),
+  checkin_date: z.string().optional()
+})
+
 const checkinAnalysisSchema = z.object({
   period_start: z.string().optional(),
   period_end: z.string().optional(),
@@ -23,6 +39,10 @@ const reportInterpretSchema = z.object({
   metadata: z.object({}).catchall(z.any()).default({})
 })
 
+const workflowRunParamsSchema = z.object({
+  requestId: z.string().min(1).max(128)
+})
+
 function todayOnly() {
   return new Date().toISOString().slice(0, 10)
 }
@@ -33,55 +53,17 @@ function addDays(dateText, days) {
   return date.toISOString().slice(0, 10)
 }
 
-function fallbackPlan(preferences = {}) {
-  return {
-    title: preferences.goal || '基础健康预治计划',
-    summary: '围绕饮食、运动、记录和复查建立可执行的生活管理节奏。',
-    sections: [],
-    tasks: [
-      {
-        task_type: 'diet',
-        title: '记录三餐结构',
-        description: '记录主食、蛋白质和蔬菜搭配，优先观察真实饮食习惯。',
-        target_value: 3,
-        unit: '次',
-        target_time: '三餐后'
-      },
-      {
-        task_type: 'exercise',
-        title: '饭后轻走',
-        description: '选择一餐后轻走 15-20 分钟，避免空腹或不适时运动。',
-        target_value: 20,
-        unit: '分钟',
-        target_time: '餐后'
-      },
-      {
-        task_type: 'review',
-        title: '整理复查指标',
-        description: '记录空腹血糖、餐后血糖和 HbA1c 等关键指标。',
-        target_value: 1,
-        unit: '次',
-        target_time: '本周'
-      }
-    ],
-    disclaimer: '方案仅供健康管理参考，如有不适或基础疾病请咨询医生。'
-  }
-}
-
 function normalizePlanOutput(outputs, preferences) {
   const parsed = safeJson(outputs, outputs) || {}
   const plan = parsed.plan || parsed.data || parsed
-  const fallback = fallbackPlan(preferences)
-  const tasks = Array.isArray(plan.tasks) && plan.tasks.length > 0
-    ? plan.tasks
-    : fallback.tasks
+  const tasks = Array.isArray(plan.tasks) ? plan.tasks : []
 
   return {
-    title: String(plan.title || fallback.title),
-    summary: String(plan.summary || plan.goal_summary || fallback.summary),
+    title: String(plan.title || preferences.goal || 'AI 生活方案'),
+    summary: String(plan.summary || plan.goal_summary || ''),
     sections: Array.isArray(plan.sections) ? plan.sections : [],
     tasks: tasks.map((task, index) => normalizePlanTask(task, index, { emptyTimeFallback: '' })),
-    disclaimer: String(plan.disclaimer || fallback.disclaimer),
+    disclaimer: String(plan.disclaimer || ''),
     raw: plan
   }
 }
@@ -121,6 +103,72 @@ function normalizeReportOutput(outputs) {
   }
 }
 
+function workflowResponse({ requestId, appCode, log = null }) {
+  const outputs = safeJson(log?.outputs, log?.outputs) || {}
+
+  return {
+    request_id: requestId,
+    app_code: appCode || log?.app_code || '',
+    status: log?.status || 'processing',
+    workflow_run_id: log?.workflow_run_id || null,
+    task_id: log?.task_id || null,
+    result: outputs.result || null,
+    outputs: outputs.workflow_outputs || outputs,
+    error_message: log?.error_message || null,
+    elapsed_time: log?.elapsed_time || null
+  }
+}
+
+function splitTargetValue(target) {
+  const text = String(target || '').trim()
+
+  if (!text) {
+    return {
+      target_value: null,
+      unit: null
+    }
+  }
+
+  const match = /^(\d+(?:\.\d+)?)(.*)$/.exec(text)
+
+  if (!match) {
+    return {
+      target_value: null,
+      unit: text
+    }
+  }
+
+  return {
+    target_value: Number(match[1]),
+    unit: match[2]?.trim() || null
+  }
+}
+
+function normalizeManualPlanTask(task) {
+  const { target_value, unit } = splitTargetValue(task.target)
+
+  return {
+    id: task.id ? Number(task.id) : undefined,
+    category: task.category,
+    title: task.title,
+    desc: task.desc || '',
+    target: task.target || '',
+    time: task.time || '',
+    startDate: task.startDate || null,
+    endDate: task.endDate || null,
+    task_type: task.category,
+    description: task.desc || '',
+    target_value,
+    unit,
+    target_time: task.time || null,
+    metadata: {
+      source: 'manual',
+      start_date: task.startDate || null,
+      end_date: task.endDate || null
+    }
+  }
+}
+
 export function registerWorkflowRoutes(router, deps, options = {}) {
   const auth = authMiddleware(deps)
   const { store, difyClient } = deps
@@ -141,48 +189,48 @@ export function registerWorkflowRoutes(router, deps, options = {}) {
       }
     }
 
-    let workflowResult
-    let normalized
+    await difyClient.enqueueWorkflow('plan', inputs, req.user.id, {
+      requestId,
+      store,
+      async onSuccess(workflowResult) {
+        const normalized = normalizePlanOutput(workflowResult.outputs, inputs.preferences)
+        const saved = await store.createPlan({
+          user_id: req.user.id,
+          risk_assessment_id: riskAssessmentId,
+          title: normalized.title,
+          goal_summary: normalized.summary,
+          status: 'active',
+          start_date: todayOnly(),
+          end_date: addDays(todayOnly(), 6),
+          preferences: inputs.preferences,
+          plan_json: {
+            title: normalized.title,
+            summary: normalized.summary,
+            sections: normalized.sections,
+            tasks: normalized.tasks,
+            disclaimer: normalized.disclaimer,
+            raw: normalized.raw
+          },
+          tasks: normalized.tasks,
+          dify_workflow_run_id: workflowResult?.workflow_run_id || null
+        })
 
-    try {
-      workflowResult = await difyClient.runWorkflow('plan', inputs, req.user.id, {
-        requestId,
-        store
-      })
-      normalized = normalizePlanOutput(workflowResult.outputs, inputs.preferences)
-    } catch (error) {
-      normalized = normalizePlanOutput({}, inputs.preferences)
-      normalized.error_message = error.message
-    }
-
-    const saved = await store.createPlan({
-      user_id: req.user.id,
-      risk_assessment_id: riskAssessmentId,
-      title: normalized.title,
-      goal_summary: normalized.summary,
-      status: 'active',
-      start_date: todayOnly(),
-      end_date: addDays(todayOnly(), 6),
-      preferences: inputs.preferences,
-      plan_json: {
-        title: normalized.title,
-        summary: normalized.summary,
-        sections: normalized.sections,
-        tasks: normalized.tasks,
-        disclaimer: normalized.disclaimer,
-        raw: normalized.raw,
-        error_message: normalized.error_message || null
-      },
-      tasks: normalized.tasks,
-      dify_workflow_run_id: workflowResult?.workflow_run_id || null
+        return {
+          plan: saved,
+          workflow: {
+            request_id: requestId,
+            workflow_run_id: workflowResult?.workflow_run_id || null,
+            status: 'succeeded'
+          }
+        }
+      }
     })
 
     sendOk(res, {
-      plan: saved,
       workflow: {
         request_id: requestId,
-        workflow_run_id: workflowResult?.workflow_run_id || null,
-        fallback: Boolean(normalized.error_message)
+        workflow_run_id: null,
+        status: 'processing'
       }
     })
   }))
@@ -200,37 +248,37 @@ export function registerWorkflowRoutes(router, deps, options = {}) {
       period_end: periodEnd,
       checkin_summary: summary
     }
-    let workflowResult
-    let normalized
+    await difyClient.enqueueWorkflow('checkin', inputs, req.user.id, {
+      requestId,
+      store,
+      async onSuccess(workflowResult) {
+        const normalized = normalizeAnalysisOutput(workflowResult.outputs, summary)
+        const saved = await store.createHealthAnalysisReport({
+          user_id: req.user.id,
+          period_start: periodStart,
+          period_end: periodEnd,
+          completion_rate: normalized.completion_rate,
+          summary: normalized.evaluation,
+          advice: normalized.advice,
+          analysis_json: normalized,
+          dify_workflow_run_id: workflowResult?.workflow_run_id || null
+        })
 
-    try {
-      workflowResult = await difyClient.runWorkflow('checkin', inputs, req.user.id, {
-        requestId,
-        store
-      })
-      normalized = normalizeAnalysisOutput(workflowResult.outputs, summary)
-    } catch (error) {
-      normalized = normalizeAnalysisOutput({}, summary)
-      normalized.error_message = error.message
-    }
-
-    const saved = await store.createHealthAnalysisReport({
-      user_id: req.user.id,
-      period_start: periodStart,
-      period_end: periodEnd,
-      completion_rate: normalized.completion_rate,
-      summary: normalized.evaluation,
-      advice: normalized.advice,
-      analysis_json: normalized,
-      dify_workflow_run_id: workflowResult?.workflow_run_id || null
+        return {
+          ...normalized,
+          report_id: saved.id,
+          period_start: periodStart,
+          period_end: periodEnd,
+          workflow_run_id: workflowResult?.workflow_run_id || null
+        }
+      }
     })
 
     sendOk(res, {
-      ...normalized,
-      report_id: saved.id,
       period_start: periodStart,
       period_end: periodEnd,
-      workflow_run_id: workflowResult?.workflow_run_id || null
+      request_id: requestId,
+      status: 'processing'
     })
   }))
 
@@ -242,16 +290,69 @@ export function registerWorkflowRoutes(router, deps, options = {}) {
       report_text: req.body.report_text,
       metadata: req.body.metadata
     }
-    const workflowResult = await difyClient.runWorkflow('report', inputs, req.user.id, {
+    await difyClient.enqueueWorkflow('report', inputs, req.user.id, {
       requestId,
-      store
+      store,
+      async onSuccess(workflowResult) {
+        const interpretation = normalizeReportOutput(workflowResult.outputs)
+
+        return {
+          ...interpretation,
+          workflow_run_id: workflowResult.workflow_run_id,
+          request_id: requestId
+        }
+      }
     })
-    const interpretation = normalizeReportOutput(workflowResult.outputs)
 
     sendOk(res, {
-      ...interpretation,
-      workflow_run_id: workflowResult.workflow_run_id,
-      request_id: requestId
+      request_id: requestId,
+      status: 'processing'
     })
+  }))
+
+  router.get('/plan-tasks', auth, asyncHandler(async (req, res) => {
+    const tasks = await store.listPlanTasks?.(req.user.id) || []
+    sendOk(res, {
+      items: tasks.map((task) => ({
+        id: task.id,
+        category: task.task_type || task.category,
+        title: task.title,
+        desc: task.description || task.desc || '',
+        target: [task.target_value, task.unit].filter(Boolean).join('') || task.unit || '',
+        time: task.target_time || task.time || '',
+        startDate: task.metadata?.start_date || null,
+        endDate: task.metadata?.end_date || null
+      }))
+    })
+  }))
+
+  router.post('/plan-tasks', auth, validate(planTaskSchema), asyncHandler(async (req, res) => {
+    const saved = await store.savePlanTask?.(req.user.id, normalizeManualPlanTask(req.body))
+    sendOk(res, saved)
+  }))
+
+  router.delete('/plan-tasks/:taskId', auth, asyncHandler(async (req, res) => {
+    sendOk(res, await store.deletePlanTask?.(req.user.id, req.params.taskId))
+  }))
+
+  router.post('/plan-tasks/:taskId/completion', auth, validate(planTaskCompleteSchema), asyncHandler(async (req, res) => {
+    sendOk(res, await store.setPlanTaskCompletion?.(
+      req.user.id,
+      req.params.taskId,
+      req.body.completed,
+      {
+        checkin_date: req.body.checkin_date,
+        source: 'plan_task_toggle'
+      }
+    ))
+  }))
+
+  router.get('/workflow-runs/:requestId', auth, validate(workflowRunParamsSchema, 'params'), asyncHandler(async (req, res) => {
+    const log = await store.getDifyLogByRequestId?.(req.user.id, req.params.requestId)
+
+    sendOk(res, workflowResponse({
+      requestId: req.params.requestId,
+      log
+    }))
   }))
 }

@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { BellOutlined } from '@ant-design/icons-vue'
-import { getStoredUser } from '../../api/request'
+import { apiGet, getStoredUser, hasAuthSession } from '../../api/request'
 
 const props = defineProps({
   light: {
@@ -11,28 +11,36 @@ const props = defineProps({
   },
 })
 
-const UNREAD_KEY = 'diafitUnreadMessages'
 const router = useRouter()
 const user = ref(getStoredUser())
-const unreadCount = ref(readUnreadCount())
+const unreadCount = ref(0)
 
 const displayName = computed(() => user.value?.nickname || user.value?.username || '我')
 const avatarText = computed(() => displayName.value.slice(0, 1) || '我')
 
-function readUnreadCount() {
-  const stored = localStorage.getItem(UNREAD_KEY)
-  const count = stored === null ? 2 : Number(stored)
+async function refreshUnreadCount() {
+  if (!hasAuthSession()) {
+    unreadCount.value = 0
+    return
+  }
 
-  return Number.isFinite(count) && count > 0 ? count : 0
+  try {
+    const response = await apiGet('/api/messages')
+    const list = response.data?.list || []
+    unreadCount.value = list.filter((item) => !item.read).length
+  } catch {
+    unreadCount.value = 0
+  }
 }
 
 function handleAuthChanged(event) {
   user.value = event.detail?.user ?? getStoredUser()
+  refreshUnreadCount()
 }
 
 function handleMessagesUpdated(event) {
   const count = Number(event.detail?.unread)
-  unreadCount.value = Number.isFinite(count) ? Math.max(count, 0) : readUnreadCount()
+  unreadCount.value = Number.isFinite(count) ? Math.max(count, 0) : 0
 }
 
 function openMessages() {
@@ -46,6 +54,7 @@ function openProfile() {
 onMounted(() => {
   window.addEventListener('diabetes:auth-changed', handleAuthChanged)
   window.addEventListener('diafit:messages-updated', handleMessagesUpdated)
+  refreshUnreadCount()
 })
 
 onBeforeUnmount(() => {

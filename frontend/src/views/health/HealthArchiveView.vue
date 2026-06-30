@@ -10,7 +10,7 @@ import {
   SafetyCertificateOutlined,
   SaveOutlined,
 } from '@ant-design/icons-vue'
-import { apiGet, apiPost, apiPut } from '../../api/request'
+import { apiGet, apiPost, apiPut, pollWorkflowRun } from '../../api/request'
 
 const router = useRouter()
 const toastText = ref('')
@@ -190,7 +190,20 @@ async function interpretReport() {
         file_names: reportFiles.value.map((file) => file.name),
       },
     })
-    reportInterpretation.value = response.data
+    const requestId = response.data?.request_id
+
+    if (requestId) {
+      const workflow = await pollWorkflowRun(requestId)
+
+      if (workflow.status === 'failed') {
+        throw new Error(workflow.error_message || '报告解读失败')
+      }
+
+      reportInterpretation.value = workflow.result
+    } else {
+      reportInterpretation.value = response.data
+    }
+
     showToast('报告解读已生成。')
   } catch (error) {
     showToast(error.message || '报告解读失败，请稍后再试。')

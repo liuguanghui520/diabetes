@@ -10,7 +10,7 @@ import {
 } from '@ant-design/icons-vue'
 import LiquidTabBar from '../../components/navigation/LiquidTabBar.vue'
 import TopUserActions from '../../components/navigation/TopUserActions.vue'
-import { apiGet, apiPost, hasAuthSession } from '../../api/request'
+import { apiGet, apiPost, hasAuthSession, pollWorkflowRun } from '../../api/request'
 
 const router = useRouter()
 const toastText = ref('')
@@ -344,7 +344,18 @@ async function runRiskAssessment() {
   try {
     const result = await apiPost('/api/risk-assessments', payload, { idempotent: true })
     riskPayload.value = result.data
-    showToast('AI 健康评估已更新。')
+    showToast(result.data?.status === 'processing' ? 'AI 健康评估已提交。' : 'AI 健康评估已更新。')
+
+    const requestId = result.data?.workflow?.request_id || result.data?.request_id
+    if (requestId && result.data?.status === 'processing') {
+      const workflow = await pollWorkflowRun(requestId)
+      if (workflow.status === 'failed') {
+        showToast(workflow.error_message || 'AI 评估失败，请稍后再试。')
+      } else {
+        showToast('AI 健康评估已完成。')
+      }
+    }
+
     await loadHealthData({ silent: true })
   } catch (error) {
     showToast(error.message || '评估失败，请稍后再试。')

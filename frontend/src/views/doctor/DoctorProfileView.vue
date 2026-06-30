@@ -8,29 +8,29 @@ import {
   MessageOutlined,
   StarFilled,
 } from '@ant-design/icons-vue'
-import { doctors } from '../../data/doctors'
 import { apiGet } from '../../api/request'
 
 const route = useRoute()
 const router = useRouter()
 const remoteDoctor = ref(null)
+const loading = ref(false)
 
 const doctor = computed(() => {
-  const id = Number(route.params.id || 0)
-  return remoteDoctor.value || doctors.find((item) => item.id === id) || doctors[0]
+  return remoteDoctor.value
 })
 
 const avatarText = computed(() => {
-  return doctor.value.avatar || String(doctor.value.name || '医').slice(0, 1)
+  return doctor.value?.avatar || String(doctor.value?.name || '医').slice(0, 1)
 })
 
 const goodAtText = computed(() => {
-  return doctor.value.goodAt || doctor.value.specialty || doctor.value.intro || '糖尿病风险筛查、血糖波动、复查指标解读'
+  return doctor.value?.goodAt || doctor.value?.specialty || doctor.value?.intro || '请在后台维护医生擅长方向。'
 })
 
-const hospitalText = computed(() => doctor.value.hospital || doctor.value.department || '慢病管理门诊')
+const hospitalText = computed(() => doctor.value?.hospital || doctor.value?.department || '慢病管理门诊')
 
 function startChat() {
+  if (!doctor.value?.id) return
   router.push({
     name: 'doctorConsult',
     query: {
@@ -40,6 +40,7 @@ function startChat() {
 }
 
 async function loadDoctor() {
+  loading.value = true
   try {
     const result = await apiGet(`/api/doctors/${route.params.id}`, { auth: false })
     remoteDoctor.value = {
@@ -56,6 +57,8 @@ async function loadDoctor() {
     }
   } catch {
     remoteDoctor.value = null
+  } finally {
+    loading.value = false
   }
 }
 
@@ -74,6 +77,7 @@ onMounted(loadDoctor)
       </header>
 
       <section class="doctor-hero">
+        <template v-if="doctor">
         <span
           class="profile-avatar"
           :class="doctor.tone"
@@ -86,9 +90,14 @@ onMounted(loadDoctor)
           <p>{{ doctor.department }} · {{ doctor.title }}</p>
           <em><CheckCircleFilled /> {{ doctor.license }}</em>
         </div>
+        </template>
+        <div v-else class="empty-block">
+          <strong>{{ loading ? '正在加载医生信息' : '医生信息不存在' }}</strong>
+          <small>{{ loading ? '请稍候。' : '请返回列表选择其他医生。' }}</small>
+        </div>
       </section>
 
-      <section class="profile-stats">
+      <section v-if="doctor" class="profile-stats">
         <div>
           <strong>{{ doctor.score }}</strong>
           <span>用户评分</span>
@@ -103,7 +112,7 @@ onMounted(loadDoctor)
         </div>
       </section>
 
-      <section class="profile-section">
+      <section v-if="doctor" class="profile-section">
         <h2>擅长方向</h2>
         <p>{{ goodAtText }}</p>
         <div class="tag-list">
@@ -111,7 +120,7 @@ onMounted(loadDoctor)
         </div>
       </section>
 
-      <section class="profile-section">
+      <section v-if="doctor" class="profile-section">
         <h2>执业信息</h2>
         <button type="button" class="info-row">
           <MedicineBoxOutlined />
@@ -129,7 +138,7 @@ onMounted(loadDoctor)
         </button>
       </section>
 
-      <footer class="profile-action">
+      <footer v-if="doctor" class="profile-action">
         <button type="button" @click="startChat">
           <MessageOutlined />
           开始咨询

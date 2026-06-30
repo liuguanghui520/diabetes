@@ -12,69 +12,17 @@ import { apiGet, hasAuthSession } from '../api/request'
 const router = useRouter()
 const summary = ref(createEmptySummary())
 const doctors = ref([])
+const diabetesTypes = ref([])
 const toastText = ref('')
 let toastTimer = null
 
-const fallbackDoctors = [
-  { id: 1, name: '赵晓峰', title: '主任医师', department: '内分泌科' },
-  { id: 2, name: '孙雅琴', title: '副主任医师', department: '内分泌科' },
-  { id: 3, name: '周伟', title: '主治医师', department: '内分泌科' },
-]
-
-const fallbackArticles = [
-  {
-    id: 'early',
-    title: '糖尿病的早期症状及预防措施',
-    summary: '糖尿病在早期可能会出现多饮、多食、多尿以及体重变化。',
-    view_count: 120,
-  },
-  {
-    id: 'diet',
-    title: '糖尿病患者的饮食指南',
-    summary: '糖尿病患者的饮食需要严格控制碳水化合物摄入。',
-    view_count: 80,
-  },
-  {
-    id: 'exercise',
-    title: '运动对糖尿病的影响',
-    summary: '适量运动可以帮助改善胰岛素敏感性。',
-    view_count: 96,
-  },
-]
-
-const diabetesTypes = [
-  {
-    id: 'type1',
-    title: '1 型糖尿病',
-    desc: '免疫系统攻击胰岛细胞，导致胰岛素分泌不足。',
-  },
-  {
-    id: 'type2',
-    title: '2 型糖尿病',
-    desc: '胰岛素抵抗，血糖无法有效吸收。',
-  },
-  {
-    id: 'gestational',
-    title: '妊娠型糖尿病',
-    desc: '妊娠期间出现的糖代谢异常。',
-  },
-  {
-    id: 'special',
-    title: '特殊性糖尿病',
-    desc: '由遗传、药物或其他疾病引起。',
-  },
-]
-
 const articleList = computed(() => {
-  const items = Array.isArray(summary.value.hot_articles) && summary.value.hot_articles.length
-    ? summary.value.hot_articles
-    : fallbackArticles
-
+  const items = Array.isArray(summary.value.hot_articles) ? summary.value.hot_articles : []
   return items.slice(0, 3)
 })
 
 const doctorList = computed(() => {
-  return doctors.value.length ? doctors.value.slice(0, 5) : fallbackDoctors
+  return doctors.value.slice(0, 5)
 })
 
 function createEmptySummary() {
@@ -109,8 +57,10 @@ async function loadData() {
       ...createEmptySummary(),
       ...(home.data || {}),
     }
+    diabetesTypes.value = home.data?.diabetes_types || []
   } catch {
     summary.value = createEmptySummary()
+    diabetesTypes.value = []
   }
 
   try {
@@ -186,6 +136,10 @@ onBeforeUnmount(() => {
               <small>{{ doctor.department || '内分泌科' }}</small>
               <button type="button" @click="openDoctor(doctor)">立即咨询</button>
             </article>
+            <div v-if="doctorList.length === 0" class="home-empty">
+              <strong>暂无医生数据</strong>
+              <small>请在管理后台维护医生后展示。</small>
+            </div>
           </div>
         </section>
 
@@ -213,6 +167,10 @@ onBeforeUnmount(() => {
                 <em><EyeOutlined /> {{ article.view_count || article.views || 0 }} 浏览</em>
               </span>
             </button>
+            <div v-if="articleList.length === 0" class="home-empty article-empty">
+              <strong>暂无科普内容</strong>
+              <small>请在管理后台发布文章后展示。</small>
+            </div>
           </div>
         </section>
 
@@ -222,10 +180,14 @@ onBeforeUnmount(() => {
           </header>
           <div class="type-grid">
             <article v-for="item in diabetesTypes" :key="item.id" class="type-card">
-              <div class="type-image">类型图片</div>
-              <strong>{{ item.title }}</strong>
-              <p>{{ item.desc }}</p>
+              <div class="type-image">{{ item.name || '糖尿病' }}</div>
+              <strong>{{ item.name }}</strong>
+              <p>{{ item.pathogenesis || item.clinical_features || '请在后台补充糖尿病类型说明。' }}</p>
             </article>
+            <div v-if="diabetesTypes.length === 0" class="home-empty article-empty">
+              <strong>暂无类型说明</strong>
+              <small>请在数据库初始化后展示。</small>
+            </div>
           </div>
         </section>
       </div>
@@ -538,6 +500,36 @@ onBeforeUnmount(() => {
   cursor: pointer;
   font-size: 12px;
   font-weight: 800;
+}
+
+.home-empty {
+  display: grid;
+  width: 100%;
+  min-width: 100%;
+  min-height: 96px;
+  place-items: center;
+  align-content: center;
+  gap: 5px;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #7f8fa3;
+  box-shadow: 0 6px 16px rgba(27, 55, 95, 0.06);
+}
+
+.home-empty strong {
+  color: #17243a;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.home-empty small {
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.article-empty {
+  min-height: 108px;
+  box-shadow: none;
 }
 
 .article-list {

@@ -444,6 +444,12 @@ td button,
   box-shadow: 0 -8px 20px rgba(31, 65, 110, 0.06);
 }
 
+@media (max-width: 380px) {
+  .admin-tabs {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 .admin-tabs button {
   display: flex;
   min-width: 0;
@@ -455,12 +461,21 @@ td button,
   padding: 7px 2px 6px;
   color: #607086;
   background: transparent;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 900;
 }
 
 .admin-tabs button svg {
-  font-size: 18px;
+  font-size: 20px;
+}
+
+@media (max-width: 380px) {
+  .admin-tabs button svg {
+    font-size: 16px;
+  }
+  .admin-tabs button span {
+    font-size: 10px;
+  }
 }
 
 .admin-tabs button span {
@@ -468,6 +483,7 @@ td button,
   max-width: 100%;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 11px;
 }
 
 .admin-tabs button.active {

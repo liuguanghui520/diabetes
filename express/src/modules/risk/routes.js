@@ -76,6 +76,36 @@ function responseFromRisk(risk) {
   }
 }
 
+function enqueueRiskAdvice({ difyClient, store, created, workflowInput, userId, requestId, scoreResult }) {
+  return difyClient.enqueueWorkflow('risk', workflowInput, userId, {
+    requestId,
+    store,
+    async onSuccess(workflowResult) {
+      const advice = difyClient.normalizeWorkflowAdvice(workflowResult.outputs, fallbackAdvice(scoreResult))
+      const updated = await store.updateRiskAssessment(created.id, {
+        advice_summary: advice.summary,
+        advice_json: advice,
+        status: 'succeeded',
+        dify_workflow_run_id: workflowResult.workflow_run_id,
+        error_message: null
+      })
+
+      return responseFromRisk(updated)
+    },
+    async onFailure(error) {
+      const advice = fallbackAdvice(scoreResult)
+      const failed = await store.updateRiskAssessment(created.id, {
+        advice_summary: advice.summary,
+        advice_json: advice,
+        status: 'failed',
+        error_message: error?.message || String(error)
+      })
+
+      return responseFromRisk(failed)
+    }
+  })
+}
+
 export function registerRiskRoutes(router, deps) {
   const auth = authMiddleware(deps)
   const { store, difyClient } = deps
@@ -131,39 +161,33 @@ export function registerRiskRoutes(router, deps) {
       idempotency_key: idempotencyKey
     })
 
-    try {
-      const workflowInput = {
-        user_id: String(req.user.id),
-        assessment_id: created.id,
-        ...profileSnapshot,
-        ...scoreResult,
-        score_detail: scoreResult.score_detail,
-        missing_fields: scoreResult.missing_fields
-      }
-      const workflowResult = await difyClient.runWorkflow('risk', workflowInput, req.user.id, {
-        requestId,
-        store
-      })
-      const advice = difyClient.normalizeWorkflowAdvice(workflowResult.outputs, fallbackAdvice(scoreResult))
-      const updated = await store.updateRiskAssessment(created.id, {
-        advice_summary: advice.summary,
-        advice_json: advice,
-        status: 'succeeded',
-        dify_workflow_run_id: workflowResult.workflow_run_id
-      })
-
-      return sendOk(res, responseFromRisk(updated))
-    } catch (error) {
-      const advice = fallbackAdvice(scoreResult)
-      const failed = await store.updateRiskAssessment(created.id, {
-        advice_summary: advice.summary,
-        advice_json: advice,
-        status: 'failed',
-        error_message: error.message
-      })
-
-      return sendOk(res, responseFromRisk(failed))
+    const workflowInput = {
+      user_id: String(req.user.id),
+      assessment_id: created.id,
+      ...profileSnapshot,
+      ...scoreResult,
+      score_detail: scoreResult.score_detail,
+      missing_fields: scoreResult.missing_fields
     }
+
+    await enqueueRiskAdvice({
+      difyClient,
+      store,
+      created,
+      workflowInput,
+      userId: req.user.id,
+      requestId,
+      scoreResult
+    })
+
+    return sendOk(res, {
+      ...responseFromRisk(created),
+      request_id: requestId,
+      workflow: {
+        request_id: requestId,
+        status: 'processing'
+      }
+    })
   }))
 
   router.get('/risk-assessments/latest', auth, asyncHandler(async (req, res) => {

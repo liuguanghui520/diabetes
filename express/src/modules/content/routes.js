@@ -8,6 +8,11 @@ const articleQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(50).default(20)
 })
 
+const articleCommentSchema = z.object({
+  content: z.string().min(1).max(1000),
+  parent_id: z.union([z.number().int(), z.string(), z.null()]).optional()
+})
+
 const checkinSchema = z.object({
   type: z.enum(['diet', 'exercise', 'water', 'sleep', 'glucose', 'review']).default('review'),
   value: z.union([z.number(), z.string()]).optional(),
@@ -56,13 +61,14 @@ function normalizeArticle(article) {
   }
 }
 
-function buildMessages({ profile, latestRisk, plan }) {
+function buildGeneratedMessages({ profile, latestRisk, plan }) {
   const now = new Date().toISOString()
   const messages = []
   const completionRate = calculateProfileCompletion(profile)
 
   if (completionRate < 100) {
     messages.push({
+      message_key: 'profile-completion',
       id: 'profile-completion',
       type: 'archive',
       group: 'service',
@@ -77,6 +83,7 @@ function buildMessages({ profile, latestRisk, plan }) {
 
   if (latestRisk) {
     messages.push({
+      message_key: `risk-${latestRisk.id}`,
       id: `risk-${latestRisk.id}`,
       type: 'risk',
       group: 'service',
@@ -90,6 +97,7 @@ function buildMessages({ profile, latestRisk, plan }) {
   }
 
   messages.push({
+    message_key: 'daily-plan',
     id: 'daily-plan',
     type: 'plan',
     group: 'reminder',
@@ -104,6 +112,7 @@ function buildMessages({ profile, latestRisk, plan }) {
   })
 
   messages.push({
+    message_key: 'assistant-ready',
     id: 'assistant-ready',
     type: 'assistant',
     group: 'assistant',
@@ -118,15 +127,51 @@ function buildMessages({ profile, latestRisk, plan }) {
   return messages
 }
 
+function normalizeSystemMessage(message) {
+  const type = message.type || 'system'
+  const group = type === 'assistant'
+    ? 'assistant'
+    : ['plan', 'consultation'].includes(type)
+      ? 'reminder'
+      : 'service'
+
+  return {
+    id: message.id,
+    message_key: message.message_key || '',
+    type,
+    group,
+    title: message.title,
+    content: message.content || '',
+    tag: group === 'assistant' ? '助手' : group === 'reminder' ? '提醒' : '服务',
+    route: message.route_name || '',
+    time: message.updated_at || message.created_at,
+    read: Boolean(message.read_at),
+    payload: message.payload || {}
+  }
+}
+
+function normalizeArticleComment(comment) {
+  return {
+    id: comment.id,
+    article_id: comment.article_id,
+    parent_id: comment.parent_id || null,
+    user: comment.nickname || comment.username || '用户',
+    content: comment.content,
+    like_count: Number(comment.like_count || 0),
+    liked: Boolean(comment.liked),
+    created_at: comment.created_at
+  }
+}
+
 export function registerContentRoutes(router, deps) {
   const auth = authMiddleware(deps)
 
   router.get('/home/summary', auth, asyncHandler(async (req, res) => {
-    const [user, profileResponse, latestRisk, articles, plan] = await Promise.all([
+    const [user, profileResponse, latestRisk, summary, plan] = await Promise.all([
       deps.store.findUserById(req.user.id),
       deps.store.getProfile(req.user.id),
       deps.store.getLatestRisk(req.user.id),
-      deps.store.getArticleRecommendations({ page: 1, pageSize: 3 }),
+      deps.store.getHomeSummary?.() || Promise.resolve({ doctors: [], articles: [], diabetesTypes: [] }),
       deps.store.getActivePlan(req.user.id)
     ])
     const profile = profileResponse || null
@@ -163,13 +208,24 @@ export function registerContentRoutes(router, deps) {
           completed: false
         }
       ],
-      hot_articles: articles.items?.map(normalizeArticle) || articles.map?.(normalizeArticle) || []
+      hot_articles: (summary?.articles || []).map(normalizeArticle),
+      recommended_doctors: summary?.doctors || [],
+      diabetes_types: summary?.diabetesTypes || []
+    })
+  }))
+
+  router.get('/diabetes-types', asyncHandler(async (_req, res) => {
+    sendOk(res, {
+      items: await deps.store.listDiabetesTypes?.({ publishedOnly: true }) || []
     })
   }))
 
   router.get('/articles', validate(articleQuerySchema, 'query'), asyncHandler(async (req, res) => {
     const query = req.validatedQuery || req.query
-    const result = await deps.store.getArticleRecommendations(query)
+    const result = await deps.store.getArticleRecommendations({
+      ...query,
+      userId: req.user?.id || null
+    })
     const items = Array.isArray(result) ? result : result.items
 
     sendOk(res, {
@@ -177,6 +233,22 @@ export function registerContentRoutes(router, deps) {
       total: result.total ?? items.length,
       page: result.page ?? query.page,
       pageSize: result.pageSize ?? query.pageSize
+    })
+  }))
+
+  router.get('/articles/favorites', auth, validate(articleQuerySchema, 'query'), asyncHandler(async (req, res) => {
+    const query = req.validatedQuery || req.query
+    const result = await deps.store.getArticleRecommendations({
+      ...query,
+      userId: req.user.id
+    })
+    const items = (Array.isArray(result) ? result : result.items).filter((item) => item.favorited)
+
+    sendOk(res, {
+      items: items.map(normalizeArticle),
+      total: items.length,
+      page: query.page,
+      pageSize: query.pageSize
     })
   }))
 
@@ -195,6 +267,30 @@ export function registerContentRoutes(router, deps) {
 
   router.post('/articles/:id/favorite', auth, asyncHandler(async (req, res) => {
     sendOk(res, await deps.store.toggleArticleFavorite(req.user.id, req.params.id))
+  }))
+
+  router.post('/articles/:id/like', auth, asyncHandler(async (req, res) => {
+    sendOk(res, await deps.store.toggleArticleLike?.(req.user.id, req.params.id))
+  }))
+
+  router.get('/articles/:id/comments', asyncHandler(async (req, res) => {
+    const comments = await deps.store.listArticleComments?.(req.params.id, {
+      userId: req.user?.id || null
+    }) || []
+    sendOk(res, { items: comments.map(normalizeArticleComment) })
+  }))
+
+  router.post('/articles/:id/comments', auth, validate(articleCommentSchema), asyncHandler(async (req, res) => {
+    const created = await deps.store.createArticleComment?.(req.user.id, req.params.id, req.body)
+    const comments = await deps.store.listArticleComments?.(req.params.id, {
+      userId: req.user.id
+    }) || []
+    const target = comments.find((item) => Number(item.id) === Number(created?.id))
+    sendOk(res, normalizeArticleComment(target || created))
+  }))
+
+  router.post('/articles/:id/comments/:commentId/like', auth, asyncHandler(async (req, res) => {
+    sendOk(res, await deps.store.toggleArticleCommentLike?.(req.user.id, req.params.commentId))
   }))
 
   router.get('/doctors', asyncHandler(async (_req, res) => {
@@ -246,14 +342,28 @@ export function registerContentRoutes(router, deps) {
       deps.store.getActivePlan(req.user.id)
     ])
 
+    const generated = buildGeneratedMessages({ profile, latestRisk, plan })
+    await Promise.all(generated.map((item) => (
+      deps.store.upsertSystemMessage?.(req.user.id, {
+        message_key: item.message_key,
+        type: item.type,
+        title: item.title,
+        content: item.content,
+        route_name: item.route,
+        payload: {
+          group: item.group,
+          tag: item.tag
+        }
+      })
+    )))
+    const messages = await deps.store.listSystemMessages?.(req.user.id) || []
+
     sendOk(res, {
-      list: buildMessages({ profile, latestRisk, plan })
+      list: messages.map(normalizeSystemMessage)
     })
   }))
 
   router.post('/messages/read-all', auth, asyncHandler(async (_req, res) => {
-    sendOk(res, {
-      updated: true
-    })
+    sendOk(res, await deps.store.markAllSystemMessagesRead?.(req.user.id))
   }))
 }

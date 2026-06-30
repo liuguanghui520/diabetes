@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { CheckCircleFilled, CoffeeOutlined, FireOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons-vue'
 import LiquidTabBar from '../../components/navigation/LiquidTabBar.vue'
-import { apiGet, apiPost } from '../../api/request'
+import { apiGet, apiPost, pollWorkflowRun } from '../../api/request'
 
 const router = useRouter()
 const mode = ref('plan')
@@ -12,29 +12,20 @@ const analysis = ref(null)
 const toastText = ref('')
 const generatingPlan = ref(false)
 const analyzing = ref(false)
-const doneMap = ref(readDoneMap())
+const doneMap = ref({})
 
-const defaultGroups = [
+const emptyGroups = [
   {
     key: 'diet',
     title: '饮食管理',
     subtitle: '定制专属饮食计划',
-    tasks: [
-      { id: 'breakfast', title: '早餐建议', time: '7:30-8:00', text: '一碗燕麦粥（无糖）、一个水煮蛋和一小把坚果。' },
-      { id: 'lunch', title: '午餐建议', time: '12:00-12:30', text: '一份清蒸鱼、半碗糙米饭和一份清炒时蔬。' },
-      { id: 'dinner', title: '晚餐建议', time: '18:00-18:30', text: '一份鸡胸肉、一份凉拌黄瓜和半碗杂粮粥。' },
-      { id: 'snack', title: '加餐建议', time: '15:00-15:30', text: '一个低糖水果和一小杯无糖酸奶。' },
-    ],
+    tasks: [],
   },
   {
     key: 'exercise',
     title: '运动管理',
     subtitle: '科学运动指导',
-    tasks: [
-      { id: 'morning', title: '晨练运动', time: '7:00-7:30', text: '三十分钟慢跑，一周五次。' },
-      { id: 'evening', title: '晚间运动', time: '18:00-18:45', text: '四十五分钟有氧运动，如游泳或骑自行车，一周三次。' },
-      { id: 'weekend', title: '周末运动', time: '9:00-10:00', text: '一小时综合训练，包括力量训练和有氧运动，每周一次。' },
-    ],
+    tasks: [],
   },
 ]
 
@@ -59,9 +50,9 @@ const groupMeta = {
 
 const groupedTasks = computed(() => {
   const apiTasks = Array.isArray(plan.value?.tasks) ? plan.value.tasks : []
-  if (!apiTasks.length) return defaultGroups
+  if (!apiTasks.length) return emptyGroups
 
-  const groups = defaultGroups.map((group) => ({ ...group, tasks: [] }))
+  const groups = emptyGroups.map((group) => ({ ...group, tasks: [] }))
   apiTasks.forEach((task, index) => {
     const key = task.task_type || task.category || (index % 2 === 0 ? 'diet' : 'exercise')
     const group = groups.find((item) => item.key === key) || groups[0]
@@ -70,32 +61,22 @@ const groupedTasks = computed(() => {
       title: task.title || '方案任务',
       time: task.time || task.target_time || '建议',
       text: task.description || task.desc || '来自个性化生活方案。',
+      completed: Boolean(task.completed),
     })
   })
 
-  return groups.map((group) => group.tasks.length ? group : defaultGroups.find((item) => item.key === group.key))
+  return groups.filter((group) => group.tasks.length)
 })
 
 const flatTasks = computed(() => groupedTasks.value.flatMap((group) => group.tasks.map((task) => ({
   ...task,
   group: group.key,
   groupTitle: group.title,
+  completed: Boolean(task.completed),
 }))))
 
 const completedCount = computed(() => flatTasks.value.filter((task) => doneMap.value[task.id]).length)
 const completionRate = computed(() => flatTasks.value.length ? Math.round((completedCount.value / flatTasks.value.length) * 100) : 0)
-
-function readDoneMap() {
-  try {
-    return JSON.parse(localStorage.getItem('diafitPlanDoneMap') || '{}')
-  } catch {
-    return {}
-  }
-}
-
-function saveDoneMap() {
-  localStorage.setItem('diafitPlanDoneMap', JSON.stringify(doneMap.value))
-}
 
 function showToast(text) {
   toastText.value = text
@@ -108,8 +89,14 @@ async function loadPlan() {
   try {
     const result = await apiGet('/api/plans/active')
     plan.value = result.data?.plan || result.data
+    const nextDoneMap = {}
+    ;(plan.value?.tasks || []).forEach((task) => {
+      nextDoneMap[task.id] = Boolean(task.completed)
+    })
+    doneMap.value = nextDoneMap
   } catch {
     plan.value = null
+    doneMap.value = {}
   }
 }
 
@@ -122,8 +109,20 @@ async function generatePlan() {
         goal: '控糖、规律运动和复查提醒',
       },
     }, { idempotent: true })
-    plan.value = result.data?.plan || result.data
-    showToast(result.data?.workflow?.fallback ? '已生成基础方案。' : 'AI 生活方案已生成。')
+    const requestId = result.data?.workflow?.request_id
+    showToast('AI 生活方案已提交。')
+
+    if (requestId) {
+      const workflow = await pollWorkflowRun(requestId)
+
+      if (workflow.status === 'failed') {
+        showToast(workflow.error_message || '生成方案失败，请稍后再试。')
+        return
+      }
+    }
+
+    await loadPlan()
+    showToast('AI 生活方案已生成。')
   } catch (error) {
     showToast(error.message || '生成方案失败，请稍后再试。')
   } finally {
@@ -136,14 +135,22 @@ async function loadAnalysis() {
   analyzing.value = true
   try {
     const result = await apiPost('/api/checkins/analysis', { days: 7 }, { idempotent: true })
-    analysis.value = result.data
-  } catch (error) {
-    analysis.value = {
-      completion_rate: completionRate.value,
-      evaluation: '打卡记录越完整，AI 分析越贴近日常生活。',
-      advice: '优先完成饮食和运动两类核心任务。',
+    const requestId = result.data?.request_id
+
+    if (requestId) {
+      const workflow = await pollWorkflowRun(requestId)
+
+      if (workflow.status === 'failed') {
+        throw new Error(workflow.error_message || 'AI 分析失败')
+      }
+
+      analysis.value = workflow.result
+    } else {
+      analysis.value = result.data
     }
-    showToast(error.message || 'AI 分析暂不可用，已展示本地摘要。')
+  } catch (error) {
+    analysis.value = null
+    showToast(error.message || 'AI 分析暂不可用，请稍后再试。')
   } finally {
     analyzing.value = false
   }
@@ -151,21 +158,14 @@ async function loadAnalysis() {
 
 async function toggleTask(task) {
   const next = !doneMap.value[task.id]
-  doneMap.value = { ...doneMap.value, [task.id]: next }
-  saveDoneMap()
-
-  if (next) {
-    try {
-      await apiPost('/api/checkins', {
-        type: task.group,
-        value: 1,
-        unit: '次',
-        detail_text: task.title,
-      }, { idempotent: true })
-    } catch {
-      showToast('本地已打卡，后端稍后同步。')
-      return
-    }
+  try {
+    await apiPost(`/api/plan-tasks/${task.id}/completion`, {
+      completed: next,
+    }, { idempotent: true })
+    doneMap.value = { ...doneMap.value, [task.id]: next }
+  } catch (error) {
+    showToast(error.message || '打卡状态更新失败。')
+    return
   }
 
   showToast(next ? '已打卡' : '已取消')
@@ -203,8 +203,13 @@ onMounted(loadPlan)
             <p>{{ plan?.goal_summary || plan?.summary || '生成后会同步 Dify 生活方案，并替换下方默认任务。' }}</p>
           </div>
           <button type="button" :disabled="generatingPlan" @click="generatePlan">
-            {{ generatingPlan ? '生成中' : (plan?.id && plan.id !== 'default-active-plan' ? '重新生成' : 'AI生成') }}
+            {{ generatingPlan ? '生成中' : (plan?.id ? '重新生成' : 'AI生成') }}
           </button>
+        </section>
+
+        <section v-if="flatTasks.length === 0" class="plan-empty">
+          <strong>还没有生活方案</strong>
+          <p>点击 AI 生成后，Dify 返回的真实方案会写入数据库，并显示在这里。</p>
         </section>
 
         <section v-for="group in groupedTasks" :key="group.key" class="plan-group">
@@ -257,6 +262,7 @@ onMounted(loadPlan)
             <b>{{ group.tasks.filter((task) => doneMap[task.id]).length === group.tasks.length ? '已达成' : '待完成' }}</b>
             <RightOutlined />
           </button>
+          <p v-if="flatTasks.length === 0" class="checkin-empty">生成方案后即可开始打卡。</p>
         </section>
       </div>
 
@@ -266,9 +272,10 @@ onMounted(loadPlan)
           <div class="ring" :class="{ low: (analysis?.completion_rate ?? completionRate) < 60 }">
             {{ analysis?.completion_rate ?? completionRate }}%
           </div>
-          <p>
+          <p v-if="analysis">
             通过分析您上一周的打卡情况，饮食打卡完成{{ completedCount }}次，总完成率{{ analysis?.completion_rate ?? completionRate }}%。
           </p>
+          <p v-else>AI 分析结果生成后会展示在这里。</p>
         </section>
         <section class="analysis-card">
           <h2>生活评价</h2>
@@ -393,6 +400,31 @@ onMounted(loadPlan)
 .plan-summary button:disabled,
 .plan-nav button:disabled {
   opacity: 0.62;
+}
+
+.plan-empty,
+.checkin-empty {
+  border-radius: 8px;
+  padding: 18px 16px;
+  background: #ffffff;
+  box-shadow: 0 6px 16px rgba(27, 55, 95, 0.06);
+  text-align: center;
+}
+
+.plan-empty strong {
+  display: block;
+  color: #101936;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.plan-empty p,
+.checkin-empty {
+  margin: 8px 0 0;
+  color: #66748a;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.55;
 }
 
 .plan-group {

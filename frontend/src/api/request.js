@@ -2,9 +2,6 @@ const TOKEN_KEY = 'diabetesAuthToken'
 const USER_KEY = 'diabetesAuthUser'
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
-const API_MODE = import.meta.env.DEV
-    ? String(import.meta.env.VITE_API_MODE || 'real').toLowerCase()
-    : 'real'
 
 export class ApiRequestError extends Error {
     constructor(message, options = {}) {
@@ -16,20 +13,6 @@ export class ApiRequestError extends Error {
         this.traceId = options.traceId || ''
         this.data = options.data ?? null
     }
-}
-
-export function isMockMode() {
-    return import.meta.env.DEV && API_MODE !== 'real'
-}
-
-async function loadMockApi() {
-    if (!isMockMode()) {
-        throw new ApiRequestError('Mock API is only available in development mode.')
-    }
-
-    const importMock = new Function('return import("./mock")')
-
-    return importMock()
 }
 
 function isAbsoluteUrl(url) {
@@ -205,19 +188,6 @@ export async function apiRequest(path, options = {}) {
         requestHeaders.set('Idempotency-Key', createIdempotencyKey())
     }
 
-    if (isMockMode()) {
-        const { mockApiRequest } = await loadMockApi()
-        const mockResult = await mockApiRequest(path, {
-            method: upperMethod,
-            data,
-            headers: Object.fromEntries(requestHeaders.entries()),
-            token,
-            signal,
-        })
-
-        return handleApiResult(mockResult.status, mockResult.payload)
-    }
-
     let body
 
     if (data !== undefined && data !== null) {
@@ -289,6 +259,44 @@ export async function apiDelete(path, options = {}) {
     })
 }
 
+export async function pollWorkflowRun(requestId, {
+    intervalMs = 2000,
+    timeoutMs = 120000,
+    signal,
+} = {}) {
+    if (!requestId) {
+        throw new ApiRequestError('缺少 workflow request_id。')
+    }
+
+    const started = Date.now()
+
+    while (Date.now() - started < timeoutMs) {
+        if (signal?.aborted) {
+            throw new DOMException('Aborted', 'AbortError')
+        }
+
+        const response = await apiGet(`/api/workflow-runs/${encodeURIComponent(requestId)}`, {
+            signal,
+        })
+        const data = response.data || {}
+
+        if (data.status === 'succeeded' || data.status === 'failed') {
+            return data
+        }
+
+        await new Promise((resolve, reject) => {
+            const timer = window.setTimeout(resolve, intervalMs)
+
+            signal?.addEventListener('abort', () => {
+                window.clearTimeout(timer)
+                reject(new DOMException('Aborted', 'AbortError'))
+            }, { once: true })
+        })
+    }
+
+    throw new ApiRequestError('AI 任务仍在处理中，请稍后刷新查看。')
+}
+
 export async function authorizedFetch(path, options = {}) {
     const {
         headers = {},
@@ -311,16 +319,6 @@ export async function authorizedFetch(path, options = {}) {
         !requestHeaders.has('Idempotency-Key')
     ) {
         requestHeaders.set('Idempotency-Key', createIdempotencyKey())
-    }
-
-    if (isMockMode()) {
-        const { mockAuthorizedFetch } = await loadMockApi()
-        return mockAuthorizedFetch(path, {
-            ...fetchOptions,
-            method,
-            headers: Object.fromEntries(requestHeaders.entries()),
-            token,
-        })
     }
 
     try {

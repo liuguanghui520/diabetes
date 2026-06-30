@@ -83,6 +83,38 @@ export function createMockDifyClient() {
         }
       }
     },
+    async enqueueWorkflow(appCode, inputs, user, options = {}) {
+      calls.workflows.push({ appCode, inputs, user, mode: 'enqueue', requestId: options.requestId || null })
+
+      const workflowResult = await this.runWorkflow(appCode, inputs, user)
+      const domainResult = await options.onSuccess?.(workflowResult)
+
+      if (options.store?.createDifyLog) {
+        await options.store.createDifyLog({
+          user_id: Number.isFinite(Number(user)) ? Number(user) : null,
+          app_code: appCode === 'risk' ? 'risk_assessment' : appCode,
+          app_type: 'workflow',
+          request_id: options.requestId || null,
+          workflow_run_id: workflowResult.workflow_run_id,
+          task_id: null,
+          inputs,
+          outputs: {
+            workflow_outputs: workflowResult.outputs,
+            result: domainResult || null
+          },
+          status: 'succeeded',
+          elapsed_time: 0.01,
+          total_tokens: 0,
+          error_message: null
+        })
+      }
+
+      return {
+        request_id: options.requestId || null,
+        status: 'processing',
+        log_id: null
+      }
+    },
     normalizeWorkflowAdvice(outputs, fallback) {
       return outputs.advice || fallback
     },

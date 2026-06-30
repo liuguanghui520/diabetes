@@ -15,6 +15,9 @@ import DoctorProfileView from '../views/doctor/DoctorProfileView.vue'
 import MessagesView from '../views/messages/MessagesView.vue'
 import FavoritesView from '../views/favorites/FavoritesView.vue'
 import AdminDashboardView from '../views/admin/AdminDashboardView.vue'
+import { getStoredUser, hasAuthSession } from '../api/request'
+
+const publicRouteNames = new Set(['journey', 'login'])
 
 const routes = [
     {
@@ -114,6 +117,47 @@ const routes = [
 const router = createRouter({
     history: createWebHistory(),
     routes,
+})
+
+router.beforeEach((to) => {
+    const hasSession = hasAuthSession()
+    const currentUser = getStoredUser()
+    const isAdmin = ['admin', 'super_admin'].includes(currentUser?.role)
+
+    if (to.path === '/' && hasSession && isAdmin) {
+        return {
+            name: 'adminDashboard',
+            replace: true,
+        }
+    }
+
+    if (publicRouteNames.has(to.name)) {
+        if (to.name === 'login' && hasSession) {
+            return {
+                name: isAdmin ? 'adminDashboard' : 'home',
+                replace: true,
+            }
+        }
+        return true
+    }
+
+    if (hasSession) {
+        if (to.name === 'adminDashboard' && !isAdmin) {
+            return {
+                name: 'home',
+                replace: true,
+            }
+        }
+        return true
+    }
+
+    return {
+        name: 'login',
+        query: {
+            redirect: to.fullPath,
+        },
+        replace: true,
+    }
 })
 
 export default router

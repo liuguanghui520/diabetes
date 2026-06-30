@@ -10,9 +10,7 @@ import {
   SaveOutlined,
   SmileOutlined,
 } from '@ant-design/icons-vue'
-import { apiGet } from '../../api/request'
-
-const TASK_KEY = 'diafitDailyTasksV2'
+import { apiDelete, apiGet, apiPost } from '../../api/request'
 
 const router = useRouter()
 const route = useRoute()
@@ -42,11 +40,6 @@ const form = reactive({
   endDate:'',
 })
 
-function readTasks() {
-  try { return JSON.parse(localStorage.getItem(TASK_KEY))||[] } catch { return [] }
-}
-function writeTasks(t) { localStorage.setItem(TASK_KEY, JSON.stringify(t)) }
-
 function showToast(text) {
   toastText.value = text
   window.setTimeout(()=>{ toastText.value='' }, 1800)
@@ -64,48 +57,42 @@ function validateTask(t) {
   return true
 }
 
-function toTask(src) {
-  const cat = categories.find(i=>i.key===src.category)||categories[0]
-  return {
-    id: src.id||`custom-${Date.now()}-${Math.random().toString(16).slice(2,6)}`,
-    title: src.title.trim(),
-    desc: src.desc.trim()||cat.hint,
-    category: src.category,
-    target: src.target.trim()||'1次',
-    time: src.time.trim()||'全天',
-    startDate: src.startDate,
-    endDate: src.endDate,
-    createdAt: new Date().toISOString(),
-  }
-}
-
-function saveTask() {
-  if (!validateTask(form)) return
-  const all = readTasks()
-
-  if (editingId.value) {
-    // 更新已有任务，保持 id 不变
-    const idx = all.findIndex(t=>t.id===editingId.value)
-    if (idx!==-1) {
-      const upd = toTask(form)
-      upd.id = editingId.value
-      upd.createdAt = all[idx].createdAt
-      all.splice(idx, 1, upd)
-    } else {
-      all.unshift(toTask(form))
-    }
-    writeTasks(all)
-    showToast('任务已更新')
-  } else {
-    writeTasks([toTask(form), ...all])
-    showToast('已保存')
-  }
-  window.setTimeout(goBack, 320)
-}
-
 function onStartDateChange(e) {
   const val = e?.target?.value||form.startDate
   if (val) { minEndDate.value=val; if (form.endDate&&form.endDate<=val) form.endDate='' }
+}
+
+async function loadTasks() {
+  try {
+    const response = await apiGet('/api/plan-tasks')
+    existingTasks.value = response.data?.items || []
+  } catch {
+    existingTasks.value = []
+  }
+}
+
+async function saveTask() {
+  if (!validateTask(form)) return
+
+  const payload = {
+    id: editingId.value || undefined,
+    category: form.category,
+    title: form.title.trim(),
+    desc: form.desc.trim() || '',
+    target: form.target.trim() || '',
+    time: form.time.trim() || '',
+    startDate: form.startDate,
+    endDate: form.endDate,
+  }
+
+  try {
+    await apiPost('/api/plan-tasks', payload, { idempotent: true })
+    showToast(editingId.value ? '任务已更新' : '已保存')
+    await loadTasks()
+    window.setTimeout(goBack, 320)
+  } catch (error) {
+    showToast(error.message || '任务保存失败。')
+  }
 }
 
 function loadTask(task) {
@@ -125,12 +112,17 @@ function cancelEdit() {
   showToast('已取消编辑')
 }
 
-function deleteTask(task) {
+async function deleteTask(task) {
   if (!window.confirm(`确认删除“${task.title}”？`)) return
-  existingTasks.value = existingTasks.value.filter(i=>i.id!==task.id)
-  writeTasks(existingTasks.value)
-  if (editingId.value===task.id) cancelEdit()
-  showToast('已删除')
+
+  try {
+    await apiDelete(`/api/plan-tasks/${task.id}`)
+    existingTasks.value = existingTasks.value.filter(i=>i.id!==task.id)
+    if (editingId.value===task.id) cancelEdit()
+    showToast('已删除')
+  } catch (error) {
+    showToast(error.message || '任务删除失败。')
+  }
 }
 
 async function generateAi() {
@@ -176,13 +168,28 @@ function pickSuggestion(item) {
 function acceptAll() {
   const v = aiSuggestions.value.filter(s=>s.title.trim()&&s.startDate&&s.startDate>=today&&s.endDate&&s.endDate>s.startDate)
   if (!v.length) return
-  writeTasks([...v.map(toTask), ...readTasks()])
-  showToast(`已采纳 ${v.length} 个`)
-  window.setTimeout(goBack, 420)
+
+  Promise.all(v.map((item) => apiPost('/api/plan-tasks', {
+    category: item.category,
+    title: item.title,
+    desc: item.desc,
+    target: item.target,
+    time: item.time,
+    startDate: item.startDate,
+    endDate: item.endDate,
+  }, { idempotent: true })))
+    .then(async () => {
+      showToast(`已采纳 ${v.length} 个`)
+      await loadTasks()
+      window.setTimeout(goBack, 420)
+    })
+    .catch((error) => {
+      showToast(error.message || '采纳推荐失败。')
+    })
 }
 
 onMounted(() => {
-  existingTasks.value = readTasks()
+  loadTasks()
   if (route.query.ai==='1') generateAi()
 })
 </script>

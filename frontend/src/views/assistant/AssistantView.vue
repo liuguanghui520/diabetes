@@ -21,7 +21,6 @@ import {
 import { apiGet, authorizedFetch } from '../../api/request'
 import LiquidTabBar from '../../components/navigation/LiquidTabBar.vue'
 
-const HISTORY_KEY = 'diafitAssistantConversations'
 const welcomeMessage = {
   role: 'assistant',
   content: '嗨，我是糖尿病预治助手，帮你看风险、理思路、做规划，或者整理一份今天能执行的健康清单。现在我们从哪里开始？',
@@ -75,20 +74,6 @@ function createLocalId() {
   return `local-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
-function readHistory() {
-  try {
-    const raw = localStorage.getItem(HISTORY_KEY)
-    const list = raw ? JSON.parse(raw) : []
-    return Array.isArray(list) ? list : []
-  } catch {
-    return []
-  }
-}
-
-function writeHistory(list) {
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(list.slice(0, 12)))
-}
-
 function cloneMessages(list) {
   return list.map((item) => ({
     role: item.role,
@@ -109,34 +94,13 @@ async function refreshHistory() {
     }))
     conversationHistory.value = remoteList
   } catch {
-    conversationHistory.value = readHistory()
+    conversationHistory.value = []
   }
 }
 
 function conversationTitle(list = messages.value) {
   const userMessage = list.find((item) => item.role === 'user')?.content
   return (userMessage || activeTask.value || '新的健康对话').slice(0, 22)
-}
-
-function saveConversationSnapshot() {
-  const hasUserMessage = messages.value.some((item) => item.role === 'user')
-  if (!hasUserMessage) return
-
-  const record = {
-    id: localConversationId.value,
-    remoteId: conversationId.value,
-    task: activeTask.value,
-    title: conversationTitle(),
-    updatedAt: Date.now(),
-    messages: cloneMessages(messages.value),
-  }
-
-  const next = [
-    record,
-    ...readHistory().filter((item) => item.id !== record.id),
-  ].sort((a, b) => b.updatedAt - a.updatedAt)
-
-  writeHistory(next)
 }
 
 async function loadLatestConversation() {
@@ -166,14 +130,13 @@ async function loadConversationMessages(item) {
       ? [{ ...welcomeMessage }, ...serverMessages]
       : [{ ...welcomeMessage }]
   } catch {
-    const local = readHistory().find((h) => h.remoteId === item.remoteId)
     hasStarted.value = true
     localConversationId.value = item.id || createLocalId()
     conversationId.value = item.remoteId
     activeTask.value = item.task || suggestions[0]
     attachments.value = []
     message.value = ''
-    messages.value = local?.messages?.length ? local.messages : [{ ...welcomeMessage }]
+    messages.value = [{ ...welcomeMessage }]
   } finally {
     loadingHistory.value = false
     showHistory.value = false
@@ -304,7 +267,6 @@ async function sendMessage(preset = '') {
     showToast(error.message || '发送失败。')
   } finally {
     sending.value = false
-    saveConversationSnapshot()
     await nextTick()
   }
 }
