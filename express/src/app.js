@@ -1,8 +1,5 @@
 import express from 'express'
 import compression from 'compression'
-import { resolve, dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { existsSync } from 'node:fs'
 import { createDb } from './db/index.js'
 import { createDifyClient } from './services/dify/client.js'
 import { errorHandler, notFoundHandler, traceMiddleware } from './http/response.js'
@@ -55,16 +52,8 @@ export async function createApp(config, overrides = {}) {
 
   registerInternalRoutes(app, deps)
 
-  // Serve frontend static files in production
-  const __dirname = dirname(fileURLToPath(import.meta.url))
-  const distPath = resolve(__dirname, '../../frontend/dist')
-  if (existsSync(distPath)) {
-    app.use(express.static(distPath, { maxAge: '7d', etag: true }))
-    // SPA fallback: serve index.html for non-API routes
-    app.get(/^\/(?!api\/|internal\/|health).*/, (_req, res) => {
-      res.sendFile(resolve(distPath, 'index.html'))
-    })
-  }
+  // Static files served by Nginx — removed from Express to avoid
+  // redundant middleware across PM2 cluster instances.
 
   app.use(notFoundHandler)
   app.use(errorHandler)
