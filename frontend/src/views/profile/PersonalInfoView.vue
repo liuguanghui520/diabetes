@@ -8,7 +8,7 @@ import {
   SaveOutlined,
   UserOutlined,
 } from '@ant-design/icons-vue'
-import { apiGet, apiPut, getStoredUser } from '../../api/request'
+import { apiGet, apiPut, getStoredUser, updateStoredUser } from '../../api/request'
 
 const router = useRouter()
 const storedUser = ref(getStoredUser())
@@ -94,13 +94,22 @@ async function saveProfile() {
   saving.value = true
 
   try {
-    await apiPut('/api/profile', {
+    const response = await apiPut('/api/profile', {
       nickname: form.nickname.trim() || storedUser.value?.username || '',
       birth_date: form.birth_date || null,
       gender: form.gender || null,
       hometown: form.hometown.trim() || null,
       city: form.city.trim() || null,
       occupation: form.occupation.trim() || null,
+    })
+
+    const savedProfile = response.data?.profile || {}
+    const savedUser = response.data?.user || {}
+    storedUser.value = updateStoredUser({
+      nickname: savedProfile.nickname || savedUser.nickname || form.nickname.trim(),
+    }) || storedUser.value
+    applyProfile({
+      profile: savedProfile,
     })
 
     showToast('个人信息已保存。')

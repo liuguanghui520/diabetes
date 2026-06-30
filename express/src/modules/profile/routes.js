@@ -3,19 +3,27 @@ import { asyncHandler, sendOk, validate } from '../../http/response.js'
 import { authMiddleware } from '../auth/auth.js'
 
 const profileSchema = z.object({
-  diagnosed_diabetes: z.boolean().optional(),
+  nickname: z.string().max(16).optional(),
+  diagnosed_diabetes: z.boolean().nullable().optional(),
   diabetes_type: z.enum(['type1', 'type2', 'gestational', 'special', 'unknown']).nullable().optional(),
   age: z.number().int().min(0).max(120).optional(),
   gender: z.enum(['male', 'female', 'unknown']).nullable().optional(),
   birth_date: z.string().nullable().optional(),
-  height_cm: z.number().min(80).max(250).optional(),
-  weight_kg: z.number().min(20).max(300).optional(),
+  height_cm: z.number().min(80).max(250).nullable().optional(),
+  weight_kg: z.number().min(20).max(300).nullable().optional(),
   waist_cm: z.number().min(30).max(200).nullable().optional(),
   sbp_mm_hg: z.number().int().min(60).max(260).nullable().optional(),
   dbp_mm_hg: z.number().int().min(30).max(180).nullable().optional(),
-  family_history_diabetes: z.boolean().optional(),
+  fasting_glucose: z.number().min(0).max(50).nullable().optional(),
+  postprandial_glucose: z.number().min(0).max(50).nullable().optional(),
+  hba1c: z.number().min(0).max(30).nullable().optional(),
+  family_history_diabetes: z.boolean().nullable().optional(),
   past_history: z.array(z.string()).default([]),
   allergy: z.string().max(500).optional(),
+  hometown: z.string().max(24).nullable().optional(),
+  city: z.string().max(24).nullable().optional(),
+  occupation: z.string().max(24).nullable().optional(),
+  medication_status: z.string().max(128).nullable().optional(),
   lifestyle: z.record(z.string(), z.unknown()).default({}),
   emergency_contact: z.string().max(64).optional(),
   emergency_phone: z.string().max(32).optional()
@@ -50,13 +58,27 @@ export function registerProfileRoutes(router, deps) {
   const auth = authMiddleware(deps)
 
   router.get('/profile', auth, asyncHandler(async (req, res) => {
-    const [profile, latestRisk] = await Promise.all([
+    const [profile, latestRisk, user] = await Promise.all([
       deps.store.getProfile(req.user.id),
-      deps.store.getLatestRisk(req.user.id)
+      deps.store.getLatestRisk(req.user.id),
+      deps.store.findUserById(req.user.id),
     ])
 
     sendOk(res, {
-      profile,
+      profile: {
+        ...(profile || {}),
+        nickname: profile?.nickname || user?.nickname || null,
+      },
+      user: user
+        ? {
+            id: user.id,
+            username: user.username,
+            nickname: user.nickname,
+            role: user.role,
+            phone: user.phone || null,
+            email: user.email || null,
+          }
+        : null,
       latest_risk: latestRisk
     })
   }))
@@ -80,7 +102,8 @@ export function registerProfileRoutes(router, deps) {
     sendOk(res, {
       profile_id: profile.id,
       bmi,
-      updated_at: profile.updated_at
+      updated_at: profile.updated_at,
+      profile,
     })
   }))
 }

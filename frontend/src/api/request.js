@@ -147,6 +147,31 @@ export function saveAuthSession(session) {
     )
 }
 
+export function updateStoredUser(patch = {}) {
+    const current = getStoredUser()
+
+    if (!current) {
+        return null
+    }
+
+    const nextUser = {
+        ...current,
+        ...(patch && typeof patch === 'object' ? patch : {}),
+    }
+
+    localStorage.setItem(USER_KEY, JSON.stringify(nextUser))
+    window.dispatchEvent(
+        new CustomEvent('diabetes:auth-changed', {
+            detail: {
+                loggedIn: true,
+                user: nextUser,
+            },
+        }),
+    )
+
+    return nextUser
+}
+
 export function clearAuthSession() {
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(USER_KEY)

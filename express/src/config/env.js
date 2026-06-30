@@ -64,6 +64,10 @@ export function loadEnv(cliArgs = parseCliArgs()) {
     env,
     host: cliArgs.host || process.env.HOST || '127.0.0.1',
     port: Number(cliArgs.port || process.env.PORT || 3001),
+    upload: {
+      publicBaseUrl: (cliArgs.uploadPublicBaseUrl || process.env.UPLOAD_PUBLIC_BASE_URL || '').replace(/\/$/, ''),
+      storageDir: cliArgs.uploadStorageDir || process.env.UPLOAD_STORAGE_DIR || '',
+    },
     jwt: {
       secret: jwtSecret || randomBytes(32).toString('hex'),
       expiresIn: process.env.JWT_EXPIRES_IN || '7d'

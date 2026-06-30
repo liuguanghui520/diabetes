@@ -12,6 +12,8 @@ import {
 import { registerAuthRoutes } from './modules/auth/auth.js'
 import { registerHealthRoutes } from './modules/health/routes.js'
 import { registerProfileRoutes } from './modules/profile/routes.js'
+import { registerPrivacyRoutes } from './modules/privacy/routes.js'
+import { registerUploadRoutes } from './modules/uploads/routes.js'
 import { registerRiskRoutes } from './modules/risk/routes.js'
 import { registerAssistantRoutes } from './modules/assistant/routes.js'
 import { registerWorkflowRoutes } from './modules/workflow/routes.js'
@@ -42,6 +44,8 @@ export async function createApp(config, overrides = {}) {
   const api = express.Router()
   const sensitiveLimiter = createSensitiveRateLimit(config)
   registerAuthRoutes(api, deps, { sensitiveLimiter })
+  registerPrivacyRoutes(api, deps)
+  registerUploadRoutes(api, deps)
   registerProfileRoutes(api, deps)
   registerRiskRoutes(api, deps)
   registerAssistantRoutes(api, deps, { sensitiveLimiter })

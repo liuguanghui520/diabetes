@@ -1,5 +1,9 @@
 import { asyncHandler, sendOk } from '../../http/response.js'
 import { errors } from '../../http/errors.js'
+import {
+  buildAuthorizedCheckinSummary,
+  buildAuthorizedUserContext,
+} from '../privacy/authorization.js'
 
 function internalAuth(config) {
   return (req, _res, next) => {
@@ -14,7 +18,11 @@ export function registerInternalRoutes(app, deps) {
   const auth = internalAuth(deps.config)
 
   app.get('/internal/dify/users/:userId/context', auth, asyncHandler(async (req, res) => {
-    sendOk(res, await deps.store.getUserContext(req.params.userId))
+    sendOk(res, await buildAuthorizedUserContext({
+      store: deps.store,
+      userId: req.params.userId,
+      scope: req.query.scope || 'assistant',
+    }))
   }))
 
   app.get('/internal/dify/home-summary', auth, asyncHandler(async (_req, res) => {
@@ -22,7 +30,12 @@ export function registerInternalRoutes(app, deps) {
   }))
 
   app.get('/internal/dify/users/:userId/checkins/summary', auth, asyncHandler(async (req, res) => {
-    sendOk(res, await deps.store.getCheckinSummary(req.params.userId, req.query))
+    sendOk(res, await buildAuthorizedCheckinSummary({
+      store: deps.store,
+      userId: req.params.userId,
+      scope: req.query.scope || 'plan',
+      query: req.query,
+    }))
   }))
 
   app.get('/internal/dify/articles/recommend', auth, asyncHandler(async (req, res) => {

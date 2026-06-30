@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   CheckCircleFilled,
@@ -11,12 +11,16 @@ import {
   SafetyCertificateOutlined,
   StopOutlined,
   UserOutlined,
+  RightOutlined,
 } from '@ant-design/icons-vue'
+import { apiGet, apiPost, apiPut } from '../../api/request'
 
 const router = useRouter()
 
 const toastText = ref('')
 const showWithdrawConfirm = ref(false)
+const loading = ref(false)
+const updating = ref(false)
 
 const AUTHORIZATION_KEY = 'diabetesDataAuthorizations'
 
@@ -83,42 +87,99 @@ function saveAuthorizations() {
   )
 }
 
-function updateMaster(value) {
-  if (value) {
-    authorizations.value = {
-      ...authorizations.value,
-      healthData: true,
-    }
-
-    saveAuthorizations()
-    showToast('已恢复健康数据智能分析授权。')
-    return
-  }
-
+function applyAuthorizations(data = {}) {
   authorizations.value = {
-    healthData: false,
-    assistantContext: false,
-    planSuggestion: false,
-    newsRecommendation: false,
+    healthData: Boolean(data.health_data_analysis_authorized),
+    assistantContext: Boolean(data.assistant_context_authorized),
+    planSuggestion: Boolean(data.plan_suggestion_authorized),
+    newsRecommendation: Boolean(data.news_recommendation_authorized),
   }
-
   saveAuthorizations()
-  showToast('已撤回全部智能分析授权。')
 }
 
-function updateAuthorization(key, value) {
-  if (!authorizations.value.healthData) {
-    showToast('请先开启健康数据智能分析授权。')
+async function loadAuthorizations() {
+  loading.value = true
+
+  try {
+    const response = await apiGet('/api/data-authorizations')
+    applyAuthorizations(response.data || {})
+  } catch (error) {
+    showToast(error.message || '暂未读取到授权设置，先显示本地缓存。')
+  } finally {
+    loading.value = false
+  }
+}
+
+async function updateMaster(value) {
+  if (updating.value) {
     return
   }
+
+  const previous = { ...authorizations.value }
+  authorizations.value = value
+    ? {
+        ...authorizations.value,
+        healthData: true,
+      }
+    : {
+        healthData: false,
+        assistantContext: false,
+        planSuggestion: false,
+        newsRecommendation: false,
+      }
+  saveAuthorizations()
+  updating.value = true
+
+  try {
+    const response = await apiPut('/api/data-authorizations', {
+      health_data_analysis_authorized: value,
+    })
+    applyAuthorizations(response.data || {})
+    showToast(value ? '已恢复健康数据智能分析授权。' : '已撤回全部智能分析授权。')
+  } catch (error) {
+    authorizations.value = previous
+    saveAuthorizations()
+    showToast(error.message || '更新失败，请稍后再试。')
+  } finally {
+    updating.value = false
+  }
+}
+
+async function updateAuthorization(key, value) {
+  if (!authorizations.value.healthData || updating.value) {
+    if (!authorizations.value.healthData) {
+      showToast('请先开启健康数据智能分析授权。')
+    }
+    return
+  }
+
+  const keyMap = {
+    assistantContext: 'assistant_context_authorized',
+    planSuggestion: 'plan_suggestion_authorized',
+    newsRecommendation: 'news_recommendation_authorized',
+  }
+  const previous = { ...authorizations.value }
 
   authorizations.value = {
     ...authorizations.value,
     [key]: value,
   }
-
   saveAuthorizations()
-  showToast(value ? '授权已开启。' : '授权已关闭。')
+  updating.value = true
+
+  try {
+    const response = await apiPut('/api/data-authorizations', {
+      [keyMap[key]]: value,
+    })
+    applyAuthorizations(response.data || {})
+    showToast(value ? '授权已开启。' : '授权已关闭。')
+  } catch (error) {
+    authorizations.value = previous
+    saveAuthorizations()
+    showToast(error.message || '更新失败，请稍后再试。')
+  } finally {
+    updating.value = false
+  }
 }
 
 function openWithdrawConfirm() {
@@ -129,18 +190,31 @@ function closeWithdrawConfirm() {
   showWithdrawConfirm.value = false
 }
 
-function confirmWithdrawAll() {
-  authorizations.value = {
-    healthData: false,
-    assistantContext: false,
-    planSuggestion: false,
-    newsRecommendation: false,
+async function confirmWithdrawAll() {
+  if (updating.value) {
+    return
   }
 
-  saveAuthorizations()
+  const previous = { ...authorizations.value }
   showWithdrawConfirm.value = false
-  showToast('已撤回全部智能分析授权。')
+  updating.value = true
+
+  try {
+    const response = await apiPost('/api/data-authorizations/withdraw-all', {
+      reason: 'user_manual',
+    })
+    applyAuthorizations(response.data || {})
+    showToast('已撤回全部智能分析授权。')
+  } catch (error) {
+    authorizations.value = previous
+    saveAuthorizations()
+    showToast(error.message || '撤回失败，请稍后再试。')
+  } finally {
+    updating.value = false
+  }
 }
+
+onMounted(loadAuthorizations)
 </script>
 
 <template>
@@ -207,6 +281,8 @@ function confirmWithdrawAll() {
 
             <van-switch
               :model-value="authorizations.healthData"
+              :loading="loading"
+              :disabled="loading || updating"
               size="22px"
               active-color="#1677ff"
               @update:model-value="updateMaster($event)"
@@ -234,7 +310,7 @@ function confirmWithdrawAll() {
 
             <van-switch
               :model-value="authorizations.assistantContext"
-              :disabled="!authorizationActive"
+              :disabled="!authorizationActive || loading || updating"
               size="22px"
               active-color="#6f42ff"
               @update:model-value="updateAuthorization('assistantContext', $event)"
@@ -253,7 +329,7 @@ function confirmWithdrawAll() {
 
             <van-switch
               :model-value="authorizations.planSuggestion"
-              :disabled="!authorizationActive"
+              :disabled="!authorizationActive || loading || updating"
               size="22px"
               active-color="#f06b00"
               @update:model-value="updateAuthorization('planSuggestion', $event)"
@@ -272,7 +348,7 @@ function confirmWithdrawAll() {
 
             <van-switch
               :model-value="authorizations.newsRecommendation"
-              :disabled="!authorizationActive"
+              :disabled="!authorizationActive || loading || updating"
               size="22px"
               active-color="#00a870"
               @update:model-value="updateAuthorization('newsRecommendation', $event)"

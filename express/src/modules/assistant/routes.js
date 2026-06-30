@@ -3,11 +3,14 @@ import { asyncHandler, sendOk, validate } from '../../http/response.js'
 import { errors } from '../../http/errors.js'
 import { authMiddleware } from '../auth/auth.js'
 import { proxyDifySse, writeSse } from './sse.js'
+import { buildAuthorizedUserContext } from '../privacy/authorization.js'
+import { sanitizeAttachmentPayload } from '../uploads/routes.js'
 
 const chatSchema = z.object({
   conversation_id: z.union([z.number().int(), z.string(), z.null()]).optional(),
   message: z.string().min(1).max(4000),
-  history: z.array(z.unknown()).optional()
+  history: z.array(z.unknown()).optional(),
+  attachments: z.array(z.unknown()).optional(),
 })
 
 const doctorChatSchema = chatSchema.extend({
@@ -111,6 +114,12 @@ export function registerAssistantRoutes(router, deps, options = {}) {
   const sensitiveLimiter = options.sensitiveLimiter || ((_req, _res, next) => next())
 
   router.post('/assistant/chat', sensitiveLimiter, auth, validate(chatSchema), asyncHandler(async (req, res) => {
+    req.body.attachments = await sanitizeAttachmentPayload(
+      store,
+      req.user.id,
+      req.body.attachments,
+    )
+
     let conversation = null
 
     if (req.body.conversation_id) {
@@ -135,11 +144,25 @@ export function registerAssistantRoutes(router, deps, options = {}) {
       store,
       difyClient,
       conversation,
-      appType: 'assistant'
+      appType: 'assistant',
+      inputs: {
+        authorized_context: await buildAuthorizedUserContext({
+          store,
+          userId: req.user.id,
+          scope: 'assistant',
+        }),
+        attachments: req.body.attachments || [],
+      },
     })
   }))
 
   router.post('/doctors/:doctorId/chat', sensitiveLimiter, auth, validate(doctorChatSchema), asyncHandler(async (req, res) => {
+    req.body.attachments = await sanitizeAttachmentPayload(
+      store,
+      req.user.id,
+      req.body.attachments,
+    )
+
     const doctorId = Number(req.params.doctorId)
     const conversation = await store.createConversation({
       user_id: req.user.id,
@@ -164,7 +187,10 @@ export function registerAssistantRoutes(router, deps, options = {}) {
       difyClient,
       conversation,
       appType: 'doctor',
-      doctorId
+      doctorId,
+      inputs: {
+        attachments: req.body.attachments || [],
+      },
     })
   }))
 

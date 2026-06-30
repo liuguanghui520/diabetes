@@ -1,6 +1,6 @@
 import cors from 'cors'
 import helmet from 'helmet'
-import rateLimit from 'express-rate-limit'
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
 
 function parseOrigins(value) {
   return String(value || '')
@@ -64,6 +64,26 @@ export function createSensitiveRateLimit(config) {
   })
 }
 
+export function createPasswordAttemptLimiter(config) {
+  return rateLimit({
+    windowMs: Number(config.security?.passwordAttemptWindowMs || 15 * 60 * 1000),
+    limit: Number(config.security?.passwordAttemptLimit || 5),
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    skipSuccessfulRequests: true,
+    keyGenerator(req) {
+      return req.user?.id
+        ? `password:user:${req.user.id}`
+        : `password:ip:${ipKeyGenerator(req.ip || req.socket?.remoteAddress || 'anonymous')}`
+    },
+    message: {
+      code: 42901,
+      message: '操作过于频繁，请稍后再试。',
+      details: [],
+    },
+  })
+}
+
 export function buildSecurityConfig(env, processEnv) {
   const defaultDevOrigins = [
     'http://localhost:5173',
@@ -81,6 +101,8 @@ export function buildSecurityConfig(env, processEnv) {
     rateLimitWindowMs: Number(processEnv.RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000),
     rateLimitMax: Number(processEnv.RATE_LIMIT_MAX || 600),
     sensitiveRateLimitWindowMs: Number(processEnv.SENSITIVE_RATE_LIMIT_WINDOW_MS || 10 * 60 * 1000),
-    sensitiveRateLimitMax: Number(processEnv.SENSITIVE_RATE_LIMIT_MAX || 30)
+    sensitiveRateLimitMax: Number(processEnv.SENSITIVE_RATE_LIMIT_MAX || 30),
+    passwordAttemptWindowMs: Number(processEnv.PASSWORD_ATTEMPT_WINDOW_MS || 15 * 60 * 1000),
+    passwordAttemptLimit: Number(processEnv.PASSWORD_ATTEMPT_LIMIT || 5),
   }
 }

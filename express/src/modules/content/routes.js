@@ -2,6 +2,10 @@ import { z } from 'zod'
 import { asyncHandler, sendOk, validate } from '../../http/response.js'
 import { authMiddleware } from '../auth/auth.js'
 import { errors } from '../../http/errors.js'
+import {
+  canGenerateHealthReminders,
+  isScopeAuthorized,
+} from '../privacy/authorization.js'
 
 const articleQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -127,6 +131,23 @@ function buildGeneratedMessages({ profile, latestRisk, plan }) {
   return messages
 }
 
+function buildGenericMessages() {
+  const now = new Date().toISOString()
+
+  return [{
+    message_key: 'assistant-ready-generic',
+    id: 'assistant-ready-generic',
+    type: 'assistant',
+    group: 'assistant',
+    title: '通用健康助手仍可使用',
+    content: '你可以继续咨询通用问题；若需个性化建议，可在授权设置中重新开启对应范围。',
+    tag: '助手',
+    route: 'assistant',
+    time: now,
+    read: true,
+  }]
+}
+
 function normalizeSystemMessage(message) {
   const type = message.type || 'system'
   const group = type === 'assistant'
@@ -167,12 +188,13 @@ export function registerContentRoutes(router, deps) {
   const auth = authMiddleware(deps)
 
   router.get('/home/summary', auth, asyncHandler(async (req, res) => {
-    const [user, profileResponse, latestRisk, summary, plan] = await Promise.all([
+    const [user, privacySettings, profileResponse, latestRisk, summary, plan] = await Promise.all([
       deps.store.findUserById(req.user.id),
+      deps.store.getPrivacySettings?.(req.user.id),
       deps.store.getProfile(req.user.id),
       deps.store.getLatestRisk(req.user.id),
       deps.store.getHomeSummary?.() || Promise.resolve({ doctors: [], articles: [], diabetesTypes: [] }),
-      deps.store.getActivePlan(req.user.id)
+      deps.store.getActivePlan(req.user.id),
     ])
     const profile = profileResponse || null
     const completionRate = calculateProfileCompletion(profile)
@@ -186,8 +208,8 @@ export function registerContentRoutes(router, deps) {
       },
       latest_risk: latestRisk,
       today_measurements: {
-        fasting_glucose: profile?.lifestyle?.fasting_glucose ?? null,
-        postprandial_glucose: profile?.lifestyle?.postprandial_glucose ?? null,
+        fasting_glucose: profile?.fasting_glucose ?? profile?.lifestyle?.fasting_glucose ?? null,
+        postprandial_glucose: profile?.postprandial_glucose ?? profile?.lifestyle?.postprandial_glucose ?? null,
         weight_kg: profile?.weight_kg ?? null
       },
       today_tasks: [
@@ -210,7 +232,8 @@ export function registerContentRoutes(router, deps) {
       ],
       hot_articles: (summary?.articles || []).map(normalizeArticle),
       recommended_doctors: summary?.doctors || [],
-      diabetes_types: summary?.diabetesTypes || []
+      diabetes_types: summary?.diabetesTypes || [],
+      health_reminder_enabled: canGenerateHealthReminders(privacySettings),
     })
   }))
 
@@ -222,9 +245,13 @@ export function registerContentRoutes(router, deps) {
 
   router.get('/articles', validate(articleQuerySchema, 'query'), asyncHandler(async (req, res) => {
     const query = req.validatedQuery || req.query
+    const authorization = req.user?.id
+      ? await deps.store.getDataAuthorization?.(req.user.id)
+      : null
     const result = await deps.store.getArticleRecommendations({
       ...query,
-      userId: req.user?.id || null
+      userId: req.user?.id || null,
+      personalized: isScopeAuthorized(authorization, 'news'),
     })
     const items = Array.isArray(result) ? result : result.items
 
@@ -240,7 +267,8 @@ export function registerContentRoutes(router, deps) {
     const query = req.validatedQuery || req.query
     const result = await deps.store.getArticleRecommendations({
       ...query,
-      userId: req.user.id
+      userId: req.user.id,
+      personalized: true,
     })
     const items = (Array.isArray(result) ? result : result.items).filter((item) => item.favorited)
 
@@ -336,13 +364,20 @@ export function registerContentRoutes(router, deps) {
   }))
 
   router.get('/messages', auth, asyncHandler(async (req, res) => {
-    const [profile, latestRisk, plan] = await Promise.all([
+    const [privacySettings, profile, latestRisk, plan] = await Promise.all([
+      deps.store.getPrivacySettings?.(req.user.id),
       deps.store.getProfile(req.user.id),
       deps.store.getLatestRisk(req.user.id),
-      deps.store.getActivePlan(req.user.id)
+      deps.store.getActivePlan(req.user.id),
     ])
 
-    const generated = buildGeneratedMessages({ profile, latestRisk, plan })
+    const generated = canGenerateHealthReminders(privacySettings)
+      ? buildGeneratedMessages({
+          profile,
+          latestRisk,
+          plan,
+        })
+      : buildGenericMessages()
     await Promise.all(generated.map((item) => (
       deps.store.upsertSystemMessage?.(req.user.id, {
         message_key: item.message_key,
@@ -363,7 +398,7 @@ export function registerContentRoutes(router, deps) {
     })
   }))
 
-  router.post('/messages/read-all', auth, asyncHandler(async (_req, res) => {
+  router.post('/messages/read-all', auth, asyncHandler(async (req, res) => {
     sendOk(res, await deps.store.markAllSystemMessagesRead?.(req.user.id))
   }))
 }

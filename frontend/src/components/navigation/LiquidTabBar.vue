@@ -37,16 +37,16 @@ const tabs = [
     animatedIcon: 'line-md:calendar',
   },
   {
-    key: 'assistant',
-    label: 'AI助手',
-    icon: RobotOutlined,
-    animatedIcon: 'line-md:chat-round-dots',
-  },
-  {
     key: 'news',
     label: '健康资讯',
     icon: BookOutlined,
     animatedIcon: 'line-md:document-list',
+  }, 
+  {
+    key: 'assistant',
+    label: 'AI助手',
+    icon: RobotOutlined,
+    animatedIcon: 'line-md:chat-round-dots',
   },
   {
     key: 'profile',

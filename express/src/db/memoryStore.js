@@ -1,4 +1,8 @@
 import { errors } from '../http/errors.js'
+import {
+  DATA_AUTHORIZATION_DEFAULTS,
+  PRIVACY_SETTINGS_DEFAULTS,
+} from '../modules/privacy/authorization.js'
 
 function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value))
@@ -16,6 +20,11 @@ export function createMemoryStore() {
   const state = {
     users: [],
     profiles: [],
+    privacySettings: [],
+    dataAuthorizations: [],
+    dataAuthorizationLogs: [],
+    authSecurityLogs: [],
+    uploads: [],
     risks: [],
     conversations: [],
     messages: [],
@@ -38,6 +47,11 @@ export function createMemoryStore() {
   const counters = {
     users: 1,
     profiles: 1,
+    privacySettings: 1,
+    dataAuthorizations: 1,
+    dataAuthorizationLogs: 1,
+    authSecurityLogs: 1,
+    uploads: 1,
     risks: 1,
     conversations: 1,
     messages: 1,
@@ -89,6 +103,7 @@ export function createMemoryStore() {
         status: 'active',
         nickname: input.nickname || input.username,
         avatar_url: null,
+        token_version: 0,
         created_at: now(),
         updated_at: now()
       }
@@ -107,8 +122,56 @@ export function createMemoryStore() {
       return clone(user)
     },
 
+    async updatePassword(userId, passwordHash, input = {}) {
+      const user = state.users.find((item) => item.id === Number(userId))
+
+      if (!user) {
+        throw errors.notFound('用户不存在')
+      }
+
+      user.password_hash = passwordHash
+      user.password_changed_at = now()
+      user.token_version = Number(user.token_version || 0) + 1
+      user.updated_at = now()
+
+      state.authSecurityLogs.push({
+        id: counters.authSecurityLogs,
+        user_id: Number(userId),
+        action: 'password_changed',
+        ip_address: input.ip_address || null,
+        user_agent: input.user_agent || null,
+        created_at: now(),
+      })
+      counters.authSecurityLogs += 1
+
+      return clone(user)
+    },
+
+    async createUpload(input) {
+      const item = {
+        id: counters.uploads,
+        ...input,
+        created_at: now(),
+      }
+      counters.uploads += 1
+      state.uploads.push(item)
+      return clone(item)
+    },
+
+    async getUploadByFileId(userId, fileId) {
+      return clone(
+        state.uploads.find((item) => (
+          item.file_id === String(fileId) &&
+          item.user_id === Number(userId)
+        )) || null,
+      )
+    },
+
     async getProfile(userId) {
-      return clone(state.profiles.find((profile) => profile.user_id === Number(userId)) || null)
+      const profile = state.profiles.find((item) => item.user_id === Number(userId)) || null
+      const user = state.users.find((item) => item.id === Number(userId)) || null
+
+      return clone(profile ? { ...profile, nickname: user?.nickname || null } : null)
     },
 
     async upsertProfile(userId, input) {
@@ -119,9 +182,18 @@ export function createMemoryStore() {
         updated_at: now()
       }
 
+      const user = state.users.find((item) => item.id === Number(userId))
+      if (user && input.nickname !== undefined) {
+        user.nickname = input.nickname || null
+        user.updated_at = now()
+      }
+
       if (existing) {
         Object.assign(existing, payload)
-        return clone(existing)
+        return clone({
+          ...existing,
+          nickname: user?.nickname || null,
+        })
       }
 
       const profile = {
@@ -132,7 +204,175 @@ export function createMemoryStore() {
 
       counters.profiles += 1
       state.profiles.push(profile)
-      return clone(profile)
+      return clone({
+        ...profile,
+        nickname: user?.nickname || null,
+      })
+    },
+
+    async getPrivacySettings(userId) {
+      let settings = state.privacySettings.find((item) => item.user_id === Number(userId))
+
+      if (!settings) {
+        settings = {
+          id: counters.privacySettings,
+          user_id: Number(userId),
+          health_reminder_enabled: PRIVACY_SETTINGS_DEFAULTS.health_reminder_enabled,
+          created_at: now(),
+          updated_at: now(),
+        }
+        counters.privacySettings += 1
+        state.privacySettings.push(settings)
+      }
+
+      return clone(settings)
+    },
+
+    async updatePrivacySettings(userId, patch = {}) {
+      const current = await this.getPrivacySettings(userId)
+      const settings = state.privacySettings.find((item) => item.user_id === Number(userId))
+
+      Object.assign(settings, {
+        health_reminder_enabled: patch.health_reminder_enabled ?? current.health_reminder_enabled,
+        updated_at: now(),
+      })
+
+      return clone(settings)
+    },
+
+    async getDataAuthorization(userId) {
+      let authorization = state.dataAuthorizations.find((item) => item.user_id === Number(userId))
+
+      if (!authorization) {
+        authorization = {
+          id: counters.dataAuthorizations,
+          user_id: Number(userId),
+          ...DATA_AUTHORIZATION_DEFAULTS,
+          granted_at: now(),
+          withdrawn_at: null,
+          created_at: now(),
+          updated_at: now(),
+        }
+        counters.dataAuthorizations += 1
+        state.dataAuthorizations.push(authorization)
+      }
+
+      return clone(authorization)
+    },
+
+    async updateDataAuthorization(userId, patch = {}, meta = {}) {
+      const current = await this.getDataAuthorization(userId)
+      const authorization = state.dataAuthorizations.find((item) => item.user_id === Number(userId))
+      const next = {
+        ...authorization,
+        ...patch,
+      }
+
+      if (
+        current.health_data_analysis_authorized === false &&
+        patch.health_data_analysis_authorized !== true &&
+        [
+          patch.assistant_context_authorized,
+          patch.plan_suggestion_authorized,
+          patch.news_recommendation_authorized,
+        ].some((value) => value === true)
+      ) {
+        throw errors.conflict('请先开启健康数据智能分析授权。')
+      }
+
+      if (patch.health_data_analysis_authorized === false) {
+        next.assistant_context_authorized = false
+        next.plan_suggestion_authorized = false
+        next.news_recommendation_authorized = false
+        next.withdrawn_at = now()
+      }
+
+      if (patch.health_data_analysis_authorized === true) {
+        next.granted_at = authorization.granted_at || now()
+        next.withdrawn_at = null
+      }
+
+      Object.assign(authorization, next, {
+        policy_version: patch.policy_version || authorization.policy_version || DATA_AUTHORIZATION_DEFAULTS.policy_version,
+        updated_at: now(),
+      })
+
+      const changes = [
+        ['master', current.health_data_analysis_authorized, authorization.health_data_analysis_authorized],
+        ['assistant_context', current.assistant_context_authorized, authorization.assistant_context_authorized],
+        ['plan_suggestion', current.plan_suggestion_authorized, authorization.plan_suggestion_authorized],
+        ['news_recommendation', current.news_recommendation_authorized, authorization.news_recommendation_authorized],
+      ]
+
+      for (const [scope, oldValue, newValue] of changes) {
+        if (oldValue === newValue) {
+          continue
+        }
+
+        state.dataAuthorizationLogs.push({
+          id: counters.dataAuthorizationLogs,
+          user_id: Number(userId),
+          action: oldValue === false && newValue === true ? 'grant' : oldValue === true && newValue === false ? 'revoke' : 'update',
+          scope,
+          old_value: oldValue,
+          new_value: newValue,
+          policy_version: authorization.policy_version || null,
+          source: meta.source || 'system',
+          reason: meta.reason || null,
+          ip_address: meta.ip_address || null,
+          user_agent: meta.user_agent || null,
+          created_at: now(),
+        })
+        counters.dataAuthorizationLogs += 1
+      }
+
+      return clone(authorization)
+    },
+
+    async withdrawAllDataAuthorization(userId, input = {}, meta = {}) {
+      const current = await this.getDataAuthorization(userId)
+      const authorization = state.dataAuthorizations.find((item) => item.user_id === Number(userId))
+
+      Object.assign(authorization, {
+        health_data_analysis_authorized: false,
+        assistant_context_authorized: false,
+        plan_suggestion_authorized: false,
+        news_recommendation_authorized: false,
+        withdrawn_at: now(),
+        updated_at: now(),
+      })
+
+      state.dataAuthorizationLogs.push({
+        id: counters.dataAuthorizationLogs,
+        user_id: Number(userId),
+        action: 'withdraw_all',
+        scope: 'master',
+        old_value: current.health_data_analysis_authorized,
+        new_value: false,
+        policy_version: authorization.policy_version || null,
+        source: meta.source || 'system',
+        reason: input.reason || meta.reason || 'user_manual',
+        ip_address: meta.ip_address || null,
+        user_agent: meta.user_agent || null,
+        created_at: now(),
+      })
+      counters.dataAuthorizationLogs += 1
+
+      return clone(authorization)
+    },
+
+    async listDataAuthorizationHistory(userId, { page = 1, pageSize = 10 } = {}) {
+      const items = state.dataAuthorizationLogs
+        .filter((item) => item.user_id === Number(userId))
+        .sort((left, right) => new Date(right.created_at) - new Date(left.created_at) || right.id - left.id)
+      const start = (Number(page) - 1) * Number(pageSize)
+
+      return {
+        items: clone(items.slice(start, start + Number(pageSize))),
+        total: items.length,
+        page: Number(page),
+        pageSize: Number(pageSize),
+      }
     },
 
     async findRiskByIdempotency(userId, idempotencyKey) {
@@ -282,10 +522,20 @@ export function createMemoryStore() {
     },
 
     async getUserContext(userId) {
+      const [profile, latestRisk, latestPlan, authorizations, privacySettings] = await Promise.all([
+        this.getProfile(userId),
+        this.getLatestRisk(userId),
+        this.getActivePlan(userId),
+        this.getDataAuthorization(userId),
+        this.getPrivacySettings(userId),
+      ])
+
       return {
-        profile: await this.getProfile(userId),
-        latest_risk: await this.getLatestRisk(userId),
-        latest_plan: await this.getActivePlan(userId)
+        profile,
+        latest_risk: latestRisk,
+        latest_plan: latestPlan,
+        authorizations,
+        privacy_settings: privacySettings,
       }
     },
 

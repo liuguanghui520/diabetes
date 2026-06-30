@@ -6,7 +6,10 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [vue()],
-
+    
+    build: {
+      cssMinify: 'esbuild',
+    },
     server: {
       host: '0.0.0.0',
 

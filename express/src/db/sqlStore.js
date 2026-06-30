@@ -1,5 +1,9 @@
 import { errors } from '../http/errors.js'
 import { normalizePlanTask } from '../utils/planTask.js'
+import {
+  DATA_AUTHORIZATION_DEFAULTS,
+  PRIVACY_SETTINGS_DEFAULTS,
+} from '../modules/privacy/authorization.js'
 
 function one(result) {
   return result.rows[0] || null
@@ -33,6 +37,103 @@ function toDateOnly(date) {
 
 function todayOnly() {
   return toDateOnly(new Date())
+}
+
+async function ensurePrivacySettingsRow(executor, userId) {
+  await executor.query(
+    `insert into user_privacy_settings
+     (user_id, health_reminder_enabled, created_at, updated_at)
+     values ($1, $2, current_timestamp, current_timestamp)
+     on conflict (user_id) do nothing`,
+    [userId, PRIVACY_SETTINGS_DEFAULTS.health_reminder_enabled],
+  )
+
+  const result = await executor.query(
+    `select * from user_privacy_settings where user_id = $1 limit 1`,
+    [userId],
+  )
+
+  return one(result)
+}
+
+async function ensureDataAuthorizationRow(executor, userId) {
+  await executor.query(
+    `insert into user_data_authorizations
+     (user_id, health_data_analysis_authorized, assistant_context_authorized,
+      plan_suggestion_authorized, news_recommendation_authorized, policy_version,
+      granted_at, withdrawn_at, updated_at)
+     values ($1, $2, $3, $4, $5, $6, current_timestamp, null, current_timestamp)
+     on conflict (user_id) do nothing`,
+    [
+      userId,
+      DATA_AUTHORIZATION_DEFAULTS.health_data_analysis_authorized,
+      DATA_AUTHORIZATION_DEFAULTS.assistant_context_authorized,
+      DATA_AUTHORIZATION_DEFAULTS.plan_suggestion_authorized,
+      DATA_AUTHORIZATION_DEFAULTS.news_recommendation_authorized,
+      DATA_AUTHORIZATION_DEFAULTS.policy_version,
+    ],
+  )
+
+  const result = await executor.query(
+    `select * from user_data_authorizations where user_id = $1 limit 1`,
+    [userId],
+  )
+
+  return one(result)
+}
+
+async function insertDataAuthorizationLog(executor, input = {}) {
+  const result = await executor.query(
+    `insert into user_data_authorization_logs
+     (user_id, action, scope, old_value, new_value, policy_version, source, reason,
+      ip_address, user_agent, created_at)
+     values
+     ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, current_timestamp)
+     returning *`,
+    [
+      input.user_id,
+      input.action,
+      input.scope,
+      input.old_value ?? null,
+      input.new_value ?? null,
+      input.policy_version || null,
+      input.source || 'system',
+      input.reason || null,
+      input.ip_address || null,
+      input.user_agent || null,
+    ],
+  )
+
+  return one(result)
+}
+
+async function insertAuthSecurityLog(executor, input = {}) {
+  const result = await executor.query(
+    `insert into auth_security_log
+     (user_id, action, ip_address, user_agent, created_at)
+     values ($1, $2, $3, $4, current_timestamp)
+     returning *`,
+    [
+      input.user_id,
+      input.action,
+      input.ip_address || null,
+      input.user_agent || null,
+    ],
+  )
+
+  return one(result)
+}
+
+function buildAuthorizationLogAction(oldValue, newValue) {
+  if (oldValue === false && newValue === true) {
+    return 'grant'
+  }
+
+  if (oldValue === true && newValue === false) {
+    return 'revoke'
+  }
+
+  return 'update'
 }
 
 async function getOwnedPlanTaskRow(executor, userId, taskId) {
@@ -126,8 +227,8 @@ export function createSqlStore(pool) {
       try {
         const result = await pool.query(
           `insert into sys_user
-           (username, phone, email, password_hash, role, status, nickname, created_at, updated_at)
-           values ($1, $2, $3, $4, $5, 'active', $6, current_timestamp, current_timestamp)
+           (username, phone, email, password_hash, role, status, nickname, token_version, created_at, updated_at)
+           values ($1, $2, $3, $4, $5, 'active', $6, 0, current_timestamp, current_timestamp)
            returning *`,
           [
             input.username,
@@ -160,65 +261,171 @@ export function createSqlStore(pool) {
       return one(result)
     },
 
+    async updatePassword(userId, passwordHash, input = {}) {
+      return transaction(pool, async (client) => {
+        const result = await client.query(
+          `update sys_user
+           set password_hash = $2,
+               password_changed_at = current_timestamp,
+               token_version = coalesce(token_version, 0) + 1,
+               updated_at = current_timestamp
+           where id = $1
+           returning *`,
+          [userId, passwordHash]
+        )
+        const user = one(result)
+
+        if (!user) {
+          throw errors.notFound('用户不存在')
+        }
+
+        await insertAuthSecurityLog(client, {
+          user_id: userId,
+          action: 'password_changed',
+          ip_address: input.ip_address || null,
+          user_agent: input.user_agent || null,
+        })
+
+        return user
+      })
+    },
+
+    async createUpload(input) {
+      const result = await pool.query(
+        `insert into uploaded_file
+         (file_id, user_id, biz_type, file_name, stored_name, mime_type, size_bytes, storage_path, created_at)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, current_timestamp)
+         returning *,
+           '/api/uploads/' || file_id as url`,
+        [
+          input.file_id,
+          input.user_id,
+          input.biz_type,
+          input.file_name,
+          input.stored_name,
+          input.mime_type,
+          input.size_bytes,
+          input.storage_path,
+        ],
+      )
+      return one(result)
+    },
+
+    async getUploadByFileId(userId, fileId) {
+      const result = await pool.query(
+        `select *,
+            '/api/uploads/' || file_id as url
+         from uploaded_file
+         where file_id = $1
+           and user_id = $2
+         limit 1`,
+        [fileId, userId],
+      )
+      return one(result)
+    },
+
     async getProfile(userId) {
       const result = await pool.query(
-        `select * from user_profile where user_id = $1 limit 1`,
+        `select p.*, u.nickname
+         from user_profile p
+         join sys_user u on u.id = p.user_id
+         where p.user_id = $1
+         limit 1`,
         [userId]
       )
       return one(result)
     },
 
     async upsertProfile(userId, input) {
-      const result = await pool.query(
-        `insert into user_profile
-         (user_id, gender, birth_date, age_snapshot, height_cm, weight_kg, bmi, waist_cm,
-          sbp_mm_hg, dbp_mm_hg, family_history_diabetes, diagnosed_diabetes, diabetes_type,
-          past_history, allergy, lifestyle, emergency_contact, emergency_phone, created_at, updated_at)
-         values
-         ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-          $14::jsonb, $15, $16::jsonb, $17, $18, current_timestamp, current_timestamp)
-         on conflict (user_id) do update set
-          gender = excluded.gender,
-          birth_date = excluded.birth_date,
-          age_snapshot = excluded.age_snapshot,
-          height_cm = excluded.height_cm,
-          weight_kg = excluded.weight_kg,
-          bmi = excluded.bmi,
-          waist_cm = excluded.waist_cm,
-          sbp_mm_hg = excluded.sbp_mm_hg,
-          dbp_mm_hg = excluded.dbp_mm_hg,
-          family_history_diabetes = excluded.family_history_diabetes,
-          diagnosed_diabetes = excluded.diagnosed_diabetes,
-          diabetes_type = excluded.diabetes_type,
-          past_history = excluded.past_history,
-          allergy = excluded.allergy,
-          lifestyle = excluded.lifestyle,
-          emergency_contact = excluded.emergency_contact,
-          emergency_phone = excluded.emergency_phone,
-          updated_at = current_timestamp
-         returning *`,
-        [
-          userId,
-          input.gender || null,
-          input.birth_date || null,
-          input.age_snapshot ?? input.age ?? null,
-          input.height_cm ?? null,
-          input.weight_kg ?? null,
-          input.bmi ?? null,
-          input.waist_cm ?? null,
-          input.sbp_mm_hg ?? null,
-          input.dbp_mm_hg ?? null,
+      return transaction(pool, async (client) => {
+        if (input.nickname !== undefined) {
+          await client.query(
+            `update sys_user
+             set nickname = $2,
+                 updated_at = current_timestamp
+             where id = $1`,
+            [userId, input.nickname || null],
+          )
+        }
+
+        const result = await client.query(
+          `insert into user_profile
+           (user_id, gender, birth_date, age_snapshot, height_cm, weight_kg, bmi, waist_cm,
+            sbp_mm_hg, dbp_mm_hg, fasting_glucose, postprandial_glucose, hba1c,
+            family_history_diabetes, diagnosed_diabetes, diabetes_type, past_history, allergy,
+            hometown, city, occupation, medication_status, lifestyle, emergency_contact,
+            emergency_phone, created_at, updated_at)
+           values
+           ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+            $14, $15, $16, $17::jsonb, $18, $19, $20, $21, $22, $23::jsonb,
+            $24, $25, current_timestamp, current_timestamp)
+           on conflict (user_id) do update set
+            gender = excluded.gender,
+            birth_date = excluded.birth_date,
+            age_snapshot = excluded.age_snapshot,
+            height_cm = excluded.height_cm,
+            weight_kg = excluded.weight_kg,
+            bmi = excluded.bmi,
+            waist_cm = excluded.waist_cm,
+            sbp_mm_hg = excluded.sbp_mm_hg,
+            dbp_mm_hg = excluded.dbp_mm_hg,
+            fasting_glucose = excluded.fasting_glucose,
+            postprandial_glucose = excluded.postprandial_glucose,
+            hba1c = excluded.hba1c,
+            family_history_diabetes = excluded.family_history_diabetes,
+            diagnosed_diabetes = excluded.diagnosed_diabetes,
+            diabetes_type = excluded.diabetes_type,
+            past_history = excluded.past_history,
+            allergy = excluded.allergy,
+            hometown = excluded.hometown,
+            city = excluded.city,
+            occupation = excluded.occupation,
+            medication_status = excluded.medication_status,
+            lifestyle = excluded.lifestyle,
+            emergency_contact = excluded.emergency_contact,
+            emergency_phone = excluded.emergency_phone,
+            updated_at = current_timestamp
+           returning *`,
+          [
+            userId,
+            input.gender || null,
+            input.birth_date || null,
+            input.age_snapshot ?? input.age ?? null,
+            input.height_cm ?? null,
+            input.weight_kg ?? null,
+            input.bmi ?? null,
+            input.waist_cm ?? null,
+            input.sbp_mm_hg ?? null,
+            input.dbp_mm_hg ?? null,
+            input.fasting_glucose ?? null,
+            input.postprandial_glucose ?? null,
+            input.hba1c ?? null,
           input.family_history_diabetes ?? null,
-          input.diagnosed_diabetes ?? false,
+          input.diagnosed_diabetes ?? null,
           input.diabetes_type || null,
-          JSON.stringify(input.past_history || []),
-          input.allergy || null,
-          JSON.stringify(input.lifestyle || {}),
-          input.emergency_contact || null,
-          input.emergency_phone || null
-        ]
-      )
-      return one(result)
+            JSON.stringify(input.past_history || []),
+            input.allergy || null,
+            input.hometown || null,
+            input.city || null,
+            input.occupation || null,
+            input.medication_status || null,
+            JSON.stringify(input.lifestyle || {}),
+            input.emergency_contact || null,
+            input.emergency_phone || null,
+          ]
+        )
+
+        const profile = one(result)
+        const user = await client.query(
+          `select nickname from sys_user where id = $1 limit 1`,
+          [userId],
+        )
+
+        return {
+          ...profile,
+          nickname: user.rows[0]?.nickname || null,
+        }
+      })
     },
 
     async findRiskByIdempotency(userId, idempotencyKey) {
@@ -485,11 +692,202 @@ export function createSqlStore(pool) {
       return one(result)
     },
 
-    async getUserContext(userId) {
+    async getPrivacySettings(userId) {
+      return ensurePrivacySettingsRow(pool, userId)
+    },
+
+    async updatePrivacySettings(userId, patch = {}) {
+      return transaction(pool, async (client) => {
+        await ensurePrivacySettingsRow(client, userId)
+        const current = await client.query(
+          `select * from user_privacy_settings where user_id = $1 limit 1`,
+          [userId],
+        )
+        const existing = one(current)
+        const result = await client.query(
+          `update user_privacy_settings
+           set health_reminder_enabled = $2,
+               updated_at = current_timestamp
+           where user_id = $1
+           returning *`,
+          [
+            userId,
+            patch.health_reminder_enabled ?? existing?.health_reminder_enabled ?? true,
+          ],
+        )
+        return one(result)
+      })
+    },
+
+    async getDataAuthorization(userId) {
+      return ensureDataAuthorizationRow(pool, userId)
+    },
+
+    async updateDataAuthorization(userId, patch = {}, meta = {}) {
+      return transaction(pool, async (client) => {
+        const current = await ensureDataAuthorizationRow(client, userId)
+        const next = {
+          ...current,
+          ...patch,
+        }
+
+        if (patch.health_data_analysis_authorized === false) {
+          next.assistant_context_authorized = false
+          next.plan_suggestion_authorized = false
+          next.news_recommendation_authorized = false
+          next.withdrawn_at = new Date().toISOString()
+        }
+
+        if (
+          current.health_data_analysis_authorized === false &&
+          patch.health_data_analysis_authorized !== true &&
+          [
+            patch.assistant_context_authorized,
+            patch.plan_suggestion_authorized,
+            patch.news_recommendation_authorized,
+          ].some((value) => value === true)
+        ) {
+          throw errors.conflict('请先开启健康数据智能分析授权。')
+        }
+
+        if (patch.health_data_analysis_authorized === true) {
+          next.withdrawn_at = null
+          next.granted_at = current.granted_at || new Date().toISOString()
+        }
+
+        const result = await client.query(
+          `update user_data_authorizations
+           set health_data_analysis_authorized = $2,
+               assistant_context_authorized = $3,
+               plan_suggestion_authorized = $4,
+               news_recommendation_authorized = $5,
+               policy_version = $6,
+               granted_at = $7,
+               withdrawn_at = $8,
+               updated_at = current_timestamp
+           where user_id = $1
+           returning *`,
+          [
+            userId,
+            next.health_data_analysis_authorized,
+            next.assistant_context_authorized,
+            next.plan_suggestion_authorized,
+            next.news_recommendation_authorized,
+            patch.policy_version || current.policy_version || DATA_AUTHORIZATION_DEFAULTS.policy_version,
+            next.health_data_analysis_authorized
+              ? current.granted_at || new Date().toISOString()
+              : current.granted_at || null,
+            next.health_data_analysis_authorized ? null : next.withdrawn_at || new Date().toISOString(),
+          ],
+        )
+        const updated = one(result)
+        const changes = [
+          ['master', current.health_data_analysis_authorized, updated.health_data_analysis_authorized],
+          ['assistant_context', current.assistant_context_authorized, updated.assistant_context_authorized],
+          ['plan_suggestion', current.plan_suggestion_authorized, updated.plan_suggestion_authorized],
+          ['news_recommendation', current.news_recommendation_authorized, updated.news_recommendation_authorized],
+        ]
+
+        for (const [scope, oldValue, newValue] of changes) {
+          if (oldValue === newValue) {
+            continue
+          }
+
+          await insertDataAuthorizationLog(client, {
+            user_id: userId,
+            action: buildAuthorizationLogAction(oldValue, newValue),
+            scope,
+            old_value: oldValue,
+            new_value: newValue,
+            policy_version: patch.policy_version || updated.policy_version || null,
+            source: meta.source || 'system',
+            reason: meta.reason || null,
+            ip_address: meta.ip_address || null,
+            user_agent: meta.user_agent || null,
+          })
+        }
+
+        return updated
+      })
+    },
+
+    async withdrawAllDataAuthorization(userId, input = {}, meta = {}) {
+      return transaction(pool, async (client) => {
+        const current = await ensureDataAuthorizationRow(client, userId)
+        const result = await client.query(
+          `update user_data_authorizations
+           set health_data_analysis_authorized = false,
+               assistant_context_authorized = false,
+               plan_suggestion_authorized = false,
+               news_recommendation_authorized = false,
+               withdrawn_at = current_timestamp,
+               updated_at = current_timestamp
+           where user_id = $1
+           returning *`,
+          [userId],
+        )
+        const updated = one(result)
+
+        await insertDataAuthorizationLog(client, {
+          user_id: userId,
+          action: 'withdraw_all',
+          scope: 'master',
+          old_value: current.health_data_analysis_authorized,
+          new_value: false,
+          policy_version: updated.policy_version || null,
+          source: meta.source || 'system',
+          reason: input.reason || meta.reason || 'user_manual',
+          ip_address: meta.ip_address || null,
+          user_agent: meta.user_agent || null,
+        })
+
+        return updated
+      })
+    },
+
+    async listDataAuthorizationHistory(userId, { page = 1, pageSize = 10 } = {}) {
+      const limit = Number(pageSize)
+      const offset = (Number(page) - 1) * limit
+      const [items, count] = await Promise.all([
+        pool.query(
+          `select *
+           from user_data_authorization_logs
+           where user_id = $1
+           order by created_at desc, id desc
+           limit $2 offset $3`,
+          [userId, limit, offset],
+        ),
+        pool.query(
+          `select count(*)::int as total
+           from user_data_authorization_logs
+           where user_id = $1`,
+          [userId],
+        ),
+      ])
+
       return {
-        profile: await this.getProfile(userId),
-        latest_risk: await this.getLatestRisk(userId),
-        latest_plan: await this.getActivePlan(userId)
+        items: items.rows,
+        total: count.rows[0]?.total || 0,
+        page: Number(page),
+        pageSize: limit,
+      }
+    },
+
+    async getUserContext(userId) {
+      const [profile, latestRisk, latestPlan, authorizations, privacySettings] = await Promise.all([
+        this.getProfile(userId),
+        this.getLatestRisk(userId),
+        this.getActivePlan(userId),
+        this.getDataAuthorization(userId),
+        this.getPrivacySettings(userId),
+      ])
+
+      return {
+        profile,
+        latest_risk: latestRisk,
+        latest_plan: latestPlan,
+        authorizations,
+        privacy_settings: privacySettings,
       }
     },
 
@@ -540,7 +938,7 @@ export function createSqlStore(pool) {
       }
     },
 
-    async getArticleRecommendations({ page = 1, pageSize = 20, userId = null } = {}) {
+    async getArticleRecommendations({ page = 1, pageSize = 20, userId = null, personalized = true } = {}) {
       const limit = Number(pageSize)
       const offset = (Number(page) - 1) * limit
       const [items, count] = await Promise.all([
@@ -555,7 +953,7 @@ export function createSqlStore(pool) {
          from article a
          left join article_category c on c.id = a.category_id
          where a.deleted_at is null and a.status = 'published'
-         order by recommend_weight desc, published_at desc nulls last
+         order by ${personalized ? 'recommend_weight desc,' : ''} published_at desc nulls last
          limit $1 offset $2`,
           [limit, offset, userId]
         ),

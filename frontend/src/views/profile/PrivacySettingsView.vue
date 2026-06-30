@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   BellOutlined,
@@ -10,12 +10,14 @@ import {
   SafetyCertificateOutlined,
   UserOutlined,
 } from '@ant-design/icons-vue'
-import { getStoredUser } from '../../api/request'
+import { apiGet, apiPut, getStoredUser } from '../../api/request'
 
 const router = useRouter()
 
 const user = ref(getStoredUser())
 const toastText = ref('')
+const loading = ref(false)
+const updating = ref(false)
 
 const SETTINGS_KEY = 'diabetesPrivacySettings'
 
@@ -44,11 +46,11 @@ function readSettings() {
 const settings = ref(readSettings())
 
 const displayName = computed(() => {
-  return user.value?.nickname || user.value?.username || '测试用户'
+  return user.value?.nickname || user.value?.username || '当前用户'
 })
 
 const accountText = computed(() => {
-  return user.value?.username || user.value?.account || 'test'
+  return user.value?.username || user.value?.account || '未同步'
 })
 
 function showToast(text) {
@@ -77,15 +79,62 @@ function saveSettings() {
   )
 }
 
-function updateSetting(key, value) {
+function applySettings(data = {}) {
+  settings.value = {
+    personalizedAdvice: Boolean(data.personalized_advice_enabled),
+    assistantContext: Boolean(data.assistant_context_enabled),
+    messageReminder: data.health_reminder_enabled !== false,
+  }
+  saveSettings()
+}
+
+async function loadSettings() {
+  loading.value = true
+
+  try {
+    const response = await apiGet('/api/privacy-settings')
+    applySettings(response.data || {})
+  } catch (error) {
+    showToast(error.message || '暂未读取到隐私设置，先显示本地缓存。')
+  } finally {
+    loading.value = false
+  }
+}
+
+async function updateSetting(key, value) {
+  if (updating.value) {
+    return
+  }
+
+  const previous = { ...settings.value }
   settings.value = {
     ...settings.value,
     [key]: value,
   }
-
   saveSettings()
+  updating.value = true
 
-  showToast(value ? '设置已开启。' : '设置已关闭。')
+  try {
+    const payload = {}
+
+    if (key === 'personalizedAdvice') {
+      payload.personalized_advice_enabled = value
+    } else if (key === 'assistantContext') {
+      payload.assistant_context_enabled = value
+    } else if (key === 'messageReminder') {
+      payload.health_reminder_enabled = value
+    }
+
+    const response = await apiPut('/api/privacy-settings', payload)
+    applySettings(response.data?.privacy_settings || response.data || {})
+    showToast(value ? '设置已开启。' : '设置已关闭。')
+  } catch (error) {
+    settings.value = previous
+    saveSettings()
+    showToast(error.message || '设置失败，请稍后再试。')
+  } finally {
+    updating.value = false
+  }
 }
 
 function go(route) {
@@ -93,6 +142,8 @@ function go(route) {
     name: route,
   })
 }
+
+onMounted(loadSettings)
 </script>
 
 <template>
@@ -180,6 +231,8 @@ function go(route) {
 
             <van-switch
               :model-value="settings.personalizedAdvice"
+              :loading="loading"
+              :disabled="loading || updating"
               size="22px"
               active-color="#1677ff"
               @update:model-value="updateSetting('personalizedAdvice', $event)"
@@ -198,6 +251,8 @@ function go(route) {
 
             <van-switch
               :model-value="settings.assistantContext"
+              :loading="loading"
+              :disabled="loading || updating"
               size="22px"
               active-color="#00a870"
               @update:model-value="updateSetting('assistantContext', $event)"
@@ -216,6 +271,8 @@ function go(route) {
 
             <van-switch
               :model-value="settings.messageReminder"
+              :loading="loading"
+              :disabled="loading || updating"
               size="22px"
               active-color="#1677ff"
               @update:model-value="updateSetting('messageReminder', $event)"

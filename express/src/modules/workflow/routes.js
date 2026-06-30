@@ -4,6 +4,9 @@ import { authMiddleware } from '../auth/auth.js'
 import { newRequestId } from '../../utils/ids.js'
 import { safeJson } from '../../utils/json.js'
 import { normalizePlanTask } from '../../utils/planTask.js'
+import { errors } from '../../http/errors.js'
+import { isScopeAuthorized } from '../privacy/authorization.js'
+import { sanitizeAttachmentPayload } from '../uploads/routes.js'
 
 const planSchema = z.object({
   risk_assessment_id: z.union([z.number().int(), z.string(), z.null()]).optional(),
@@ -35,8 +38,16 @@ const checkinAnalysisSchema = z.object({
 
 const reportInterpretSchema = z.object({
   report_file_id: z.union([z.number().int(), z.string(), z.null()]).optional(),
-  report_text: z.string().min(1).max(20000),
+  report_text: z.string().max(20000).optional(),
   metadata: z.object({}).catchall(z.any()).default({})
+}).superRefine((value, ctx) => {
+  if (!value.report_file_id && !String(value.report_text || '').trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: '请至少提供报告文本或上传报告文件。',
+      path: ['report_text'],
+    })
+  }
 })
 
 const workflowRunParamsSchema = z.object({
@@ -175,6 +186,12 @@ export function registerWorkflowRoutes(router, deps, options = {}) {
   const sensitiveLimiter = options.sensitiveLimiter || ((_req, _res, next) => next())
 
   router.post('/plans/generate', sensitiveLimiter, auth, validate(planSchema), asyncHandler(async (req, res) => {
+    const authorizations = await store.getDataAuthorization?.(req.user.id)
+
+    if (!isScopeAuthorized(authorizations, 'plan')) {
+      throw errors.conflict('当前未开启生活方案定制授权，请先在数据授权页开启后再生成个性化方案。')
+    }
+
     const requestId = newRequestId()
     const latestRisk = req.body.risk_assessment_id
       ? null
@@ -284,11 +301,17 @@ export function registerWorkflowRoutes(router, deps, options = {}) {
 
   router.post('/reports/interpret', sensitiveLimiter, auth, validate(reportInterpretSchema), asyncHandler(async (req, res) => {
     const requestId = newRequestId()
+    const uploadMeta = req.body.report_file_id
+      ? await sanitizeAttachmentPayload(store, req.user.id, [{ file_id: req.body.report_file_id }])
+      : []
     const inputs = {
       user_id: String(req.user.id),
       report_file_id: req.body.report_file_id || null,
-      report_text: req.body.report_text,
-      metadata: req.body.metadata
+      report_text: req.body.report_text || '',
+      metadata: {
+        ...req.body.metadata,
+        uploaded_files: uploadMeta,
+      }
     }
     await difyClient.enqueueWorkflow('report', inputs, req.user.id, {
       requestId,

@@ -7,7 +7,6 @@ import {
   CloseOutlined,
   CopyOutlined,
   HistoryOutlined,
-  LeftOutlined,
   PaperClipOutlined,
   PlusOutlined,
   RobotOutlined,
@@ -16,7 +15,9 @@ import {
   SoundOutlined,
 } from '@ant-design/icons-vue'
 import { apiGet, authorizedFetch } from '../../api/request'
+import { uploadSingleFile } from '../../api/uploads'
 import LiquidTabBar from '../../components/navigation/LiquidTabBar.vue'
+import { renderChatHtml } from '../../utils/chatRichText'
 
 const welcomeMessage = {
   role: 'assistant',
@@ -41,24 +42,13 @@ const messages = ref([
   { ...welcomeMessage },
 ])
 
-const suggestions = [
-  '控糖饮食',
-  '风险解读',
-  '生活计划',
-  '报告解读',
-]
-
-const activeTask = ref(suggestions[0])
-
 const activeHistoryKey = computed(() => {
   return conversationId.value
     ? `remote-${conversationId.value}`
     : localConversationId.value
 })
 
-const inputPlaceholder = computed(() => {
-  return `${activeTask.value}，说说你的情况…`
-})
+const inputPlaceholder = '描述你的情况或上传报告…'
 
 function createLocalId() {
   return `local-${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -76,10 +66,20 @@ function cloneMessages(list) {
   return list.map((item) => ({
     role: item.role,
     content: item.content,
+    html: item.html || '',
     files: Array.isArray(item.files)
       ? item.files.map((file) => ({ ...file }))
       : undefined,
   }))
+}
+
+function decorateMessage(messageItem = {}) {
+  const content = messageItem.content || ''
+  return {
+    ...messageItem,
+    content,
+    html: messageItem.role === 'assistant' ? renderChatHtml(content).html : '',
+  }
 }
 
 async function refreshHistory() {
@@ -116,11 +116,10 @@ async function loadConversationMessages(item) {
     const serverMessages = (result.data || []).map((messageItem) => ({
       role: messageItem.role,
       content: messageItem.content,
-    }))
+    })).map(decorateMessage)
 
     localConversationId.value = item.id || `remote-${item.remoteId}`
     conversationId.value = item.remoteId
-    activeTask.value = item.task || suggestions[0]
     attachments.value = []
     message.value = ''
 
@@ -130,7 +129,6 @@ async function loadConversationMessages(item) {
   } catch {
     localConversationId.value = item.id || createLocalId()
     conversationId.value = item.remoteId
-    activeTask.value = item.task || suggestions[0]
     attachments.value = []
     message.value = ''
     messages.value = [{ ...welcomeMessage }]
@@ -150,12 +148,11 @@ async function loadConversation(item) {
 
   localConversationId.value = item.id || createLocalId()
   conversationId.value = item.remoteId || null
-  activeTask.value = item.task || suggestions[0]
   attachments.value = []
   message.value = ''
 
   messages.value = item.messages?.length
-    ? cloneMessages(item.messages)
+    ? cloneMessages(item.messages).map(decorateMessage)
     : [{ ...welcomeMessage }]
 
   showHistory.value = false
@@ -166,7 +163,6 @@ async function loadConversation(item) {
 function newConversation() {
   localConversationId.value = createLocalId()
   conversationId.value = null
-  activeTask.value = suggestions[0]
   attachments.value = []
   message.value = ''
   messages.value = [{ ...welcomeMessage }]
@@ -211,8 +207,9 @@ async function readSse(response, target) {
           dataLine.replace(/^data:\s*/, ''),
         )
 
-        if (data.delta || data.content) {
-          target.content += data.delta || data.content
+        if (data.delta || data.content || data.answer) {
+          target.content += data.delta || data.content || data.answer
+          target.html = renderChatHtml(target.content).html
         }
 
         if (data.conversation_id) {
@@ -220,6 +217,7 @@ async function readSse(response, target) {
         }
       } catch {
         target.content += dataLine.replace(/^data:\s*/, '')
+        target.html = renderChatHtml(target.content).html
       }
     }
   }
@@ -243,10 +241,10 @@ async function sendMessage(preset = '') {
     files: pendingFiles,
   })
 
-  const reply = {
+  const reply = decorateMessage({
     role: 'assistant',
     content: '',
-  }
+  })
 
   messages.value.push(reply)
 
@@ -255,6 +253,23 @@ async function sendMessage(preset = '') {
   sending.value = true
 
   try {
+    const uploadedAttachments = []
+
+    for (const file of pendingFiles) {
+      if (file.raw instanceof File) {
+        const uploaded = await uploadSingleFile(file.raw, 'assistant')
+        uploadedAttachments.push({
+          file_id: uploaded.file_id,
+          name: uploaded.file_name,
+          size: uploaded.size,
+          type: uploaded.mime_type,
+          url: uploaded.url,
+        })
+      } else {
+        uploadedAttachments.push(file)
+      }
+    }
+
     const response = await authorizedFetch('/api/assistant/chat', {
       method: 'POST',
       headers: {
@@ -264,8 +279,7 @@ async function sendMessage(preset = '') {
         conversation_id: conversationId.value,
         message: visibleContent,
         content: visibleContent,
-        task: activeTask.value,
-        attachments: pendingFiles,
+        attachments: uploadedAttachments,
       }),
     })
 
@@ -281,6 +295,7 @@ async function sendMessage(preset = '') {
       reply.content = payload.data?.reply
         || payload.data?.answer
         || '我收到了，我们可以继续细化。'
+      reply.html = renderChatHtml(reply.content).html
 
       conversationId.value = payload.data?.conversation_id || conversationId.value
     }
@@ -288,6 +303,7 @@ async function sendMessage(preset = '') {
     refreshHistory()
   } catch (error) {
     reply.content = '助手暂时不可用，稍后再试一次。'
+    reply.html = renderChatHtml(reply.content).html
     showToast(error.message || '发送失败。')
   } finally {
     sending.value = false
@@ -337,20 +353,8 @@ function speakText(text) {
   showToast('正在朗读。')
 }
 
-function goBack() {
-  if (window.history.length > 1) {
-    router.back()
-    return
-  }
-
-  router.push({
-    name: 'home',
-  })
-}
-
 function handleVoiceInput() {
-  message.value = message.value || `${activeTask.value}：`
-  showToast('已切换到语音提问格式，可直接补充描述。')
+  showToast('说出你的问题，我会帮你整理。')
 }
 
 function handleCameraUpload() {
@@ -433,6 +437,7 @@ function formatHistoryTime(timestamp) {
 
 function handleFileChange(event) {
   const files = Array.from(event.target.files || []).map((file) => ({
+    raw: file,
     name: file.name,
     size: file.size,
     type: file.type || 'file',
@@ -456,10 +461,6 @@ function removeAttachment(index) {
   attachments.value.splice(index, 1)
 }
 
-function selectSuggestion(item) {
-  activeTask.value = item
-}
-
 function handleTabChange(key) {
   if (key === 'assistant') {
     return
@@ -477,14 +478,6 @@ onMounted(refreshHistory)
   <main class="assistant-shell">
     <section class="assistant-phone">
       <header class="q-header">
-        <button
-          type="button"
-          aria-label="返回"
-          @click="goBack"
-        >
-          <LeftOutlined />
-        </button>
-
         <h1>健康助手</h1>
 
         <button
@@ -517,7 +510,12 @@ onMounted(refreshHistory)
             class="q-message"
             :class="item.role"
           >
-            <p>{{ item.content || '生成中…' }}</p>
+            <div
+              v-if="item.role === 'assistant'"
+              class="message-rich"
+              v-html="item.html || renderChatHtml(item.content || '生成中…').html"
+            ></div>
+            <p v-else>{{ item.content || '生成中…' }}</p>
 
             <div
               v-if="item.files?.length"
@@ -565,19 +563,6 @@ onMounted(refreshHistory)
       </div>
 
       <footer class="q-input-area">
-        <div class="suggestion-row">
-          <button
-            v-for="item in suggestions"
-            :key="item"
-            type="button"
-            :class="{ active: activeTask === item }"
-            :aria-pressed="activeTask === item"
-            @click="selectSuggestion(item)"
-          >
-            {{ item }}
-          </button>
-        </div>
-
         <div
           v-if="attachments.length"
           class="attachment-row"
@@ -767,7 +752,7 @@ onMounted(refreshHistory)
   display: grid;
   height: 66px;
   flex: 0 0 auto;
-  grid-template-columns: 42px 1fr 42px;
+  grid-template-columns: 1fr 42px;
   align-items: center;
   padding: 8px 16px 0;
   background: #ffffff;
@@ -859,6 +844,68 @@ onMounted(refreshHistory)
   font-weight: 800;
   line-height: 1.55;
   white-space: pre-wrap;
+}
+
+.message-rich :deep(p),
+.message-rich :deep(ul),
+.message-rich :deep(pre),
+.message-rich :deep(h1),
+.message-rich :deep(h2),
+.message-rich :deep(h3) {
+  margin: 0;
+}
+
+.message-rich :deep(p + p),
+.message-rich :deep(p + ul),
+.message-rich :deep(ul + p),
+.message-rich :deep(details) {
+  margin-top: 10px;
+}
+
+.message-rich :deep(ul) {
+  padding-left: 18px;
+}
+
+.message-rich :deep(li + li) {
+  margin-top: 6px;
+}
+
+.message-rich :deep(code) {
+  border-radius: 8px;
+  padding: 2px 6px;
+  background: rgba(23, 25, 29, 0.08);
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 0.92em;
+}
+
+.message-rich :deep(a) {
+  color: #1677ff;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+.message-rich :deep(.chat-thinking) {
+  border: 1px solid rgba(22, 119, 255, 0.15);
+  border-radius: 16px;
+  padding: 10px 12px;
+  background: rgba(22, 119, 255, 0.04);
+}
+
+.message-rich :deep(.chat-thinking summary) {
+  cursor: pointer;
+  color: #4f6480;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.message-rich :deep(.chat-thinking pre) {
+  margin-top: 10px;
+  white-space: pre-wrap;
+  color: #51667f;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.55;
 }
 
 .q-message.user {

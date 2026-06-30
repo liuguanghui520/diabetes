@@ -11,6 +11,7 @@ import {
   SaveOutlined,
 } from '@ant-design/icons-vue'
 import { apiGet, apiPost, apiPut, pollWorkflowRun } from '../../api/request'
+import { uploadSingleFile } from '../../api/uploads'
 
 const router = useRouter()
 const toastText = ref('')
@@ -148,7 +149,7 @@ async function saveProfile() {
   saving.value = true
 
   try {
-    await apiPut('/api/profile', {
+    const response = await apiPut('/api/profile', {
       diagnosed_diabetes: form.diagnosed_diabetes,
       diabetes_type: form.diagnosed_diabetes ? form.diabetes_type || 'unknown' : null,
       family_history_diabetes: form.family_history_diabetes,
@@ -164,6 +165,7 @@ async function saveProfile() {
         ? form.past_history.split(/[、,，\s]+/).filter(Boolean)
         : [],
     })
+    applyProfile(response.data?.profile || {})
 
     showToast('健康档案已保存。')
   } catch (error) {
@@ -184,7 +186,24 @@ async function interpretReport() {
   interpretingReport.value = true
 
   try {
+    let reportFileId = reportFiles.value[0]?.file_id || null
+
+    if (!reportFileId && reportFiles.value[0]?.raw instanceof File) {
+      const uploaded = await uploadSingleFile(reportFiles.value[0].raw, 'report')
+      reportFileId = uploaded.file_id
+      reportFiles.value = reportFiles.value.map((item, index) => (
+        index === 0
+          ? {
+              ...item,
+              file_id: uploaded.file_id,
+              url: uploaded.url,
+            }
+          : item
+      ))
+    }
+
     const response = await apiPost('/api/reports/interpret', {
+      report_file_id: reportFileId,
       report_text: text,
       metadata: {
         file_names: reportFiles.value.map((file) => file.name),
@@ -218,6 +237,7 @@ function openReportPicker() {
 
 function handleReportFiles(event) {
   const files = Array.from(event.target.files || []).map((file) => ({
+    raw: file,
     name: file.name,
     size: file.size,
     type: file.type || 'file',
@@ -476,7 +496,7 @@ onMounted(loadProfile)
             >
               <FileSearchOutlined />
               <span>{{ file.name }}</span>
-              <em>待确认</em>
+              <em>{{ file.file_id ? '已上传' : '待上传' }}</em>
             </button>
           </section>
 

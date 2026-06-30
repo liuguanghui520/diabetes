@@ -13,6 +13,8 @@ import {
   SmileOutlined,
 } from '@ant-design/icons-vue'
 import { apiGet, authorizedFetch } from '../../api/request'
+import { uploadSingleFile } from '../../api/uploads'
+import { renderChatHtml } from '../../utils/chatRichText'
 
 const router = useRouter()
 const route = useRoute()
@@ -133,6 +135,7 @@ function getThread(id) {
       {
         role: 'assistant',
         content: doctor.greeting,
+        html: renderChatHtml(doctor.greeting).html,
       },
     ]
   }
@@ -241,9 +244,11 @@ async function readSse(response, target) {
 
       try {
         const data = JSON.parse(rawText)
-        target.content += data.delta || data.content || ''
+        target.content += data.delta || data.content || data.answer || ''
+        target.html = renderChatHtml(target.content).html
       } catch {
         target.content += rawText
+        target.html = renderChatHtml(target.content).html
       }
     }
   }
@@ -278,6 +283,7 @@ async function sendDoctorMessage(preset = '') {
   const reply = {
     role: 'assistant',
     content: '',
+    html: '',
   }
 
   thread.push(reply)
@@ -289,6 +295,23 @@ async function sendDoctorMessage(preset = '') {
   await scrollToBottom()
 
   try {
+    const uploadedAttachments = []
+
+    for (const file of files) {
+      if (file.raw instanceof File) {
+        const uploaded = await uploadSingleFile(file.raw, 'doctor')
+        uploadedAttachments.push({
+          file_id: uploaded.file_id,
+          name: uploaded.file_name,
+          size: uploaded.size,
+          type: uploaded.mime_type,
+          url: uploaded.url,
+        })
+      } else {
+        uploadedAttachments.push(file)
+      }
+    }
+
     const response = await authorizedFetch(
       `/api/doctors/${activeDoctor.value}/chat`,
       {
@@ -299,7 +322,7 @@ async function sendDoctorMessage(preset = '') {
         body: JSON.stringify({
           conversation_id: null,
           message: finalContent,
-          attachments: files,
+          attachments: uploadedAttachments,
         }),
       },
     )
@@ -312,9 +335,11 @@ async function sendDoctorMessage(preset = '') {
       reply.content = payload.data?.reply
         || payload.data?.answer
         || '已收到咨询，我会按医学参考思路帮你梳理。'
+      reply.html = renderChatHtml(reply.content).html
     }
   } catch (error) {
     reply.content = '医生咨询助手暂时不可用。急性不适或明显异常指标，请优先线下就医。'
+    reply.html = renderChatHtml(reply.content).html
     showToast(error.message || '发送失败。')
   } finally {
     sending.value = false
@@ -349,6 +374,7 @@ function handleTool(type) {
 function handleDoctorFileChange(event) {
   const files = Array.from(event.target.files || []).map((file) => {
     return {
+      raw: file,
       name: file.name,
       size: file.size,
       type: file.type || 'file',
@@ -614,7 +640,12 @@ onMounted(async () => {
                 {{ currentDoctor?.avatar || '医' }}
               </button>
 
-              <p>{{ item.content || '正在整理回复…' }}</p>
+              <div
+                v-if="item.role === 'assistant'"
+                class="doctor-rich"
+                v-html="item.html || renderChatHtml(item.content || '正在整理回复…').html"
+              ></div>
+              <p v-else>{{ item.content || '正在整理回复…' }}</p>
 
               <span
                 v-if="item.role === 'user'"
@@ -1180,6 +1211,68 @@ onMounted(async () => {
   font-weight: 760;
   line-height: 1.58;
   white-space: pre-wrap;
+}
+
+.doctor-rich :deep(p),
+.doctor-rich :deep(ul),
+.doctor-rich :deep(pre),
+.doctor-rich :deep(h1),
+.doctor-rich :deep(h2),
+.doctor-rich :deep(h3) {
+  margin: 0;
+}
+
+.doctor-rich :deep(p + p),
+.doctor-rich :deep(p + ul),
+.doctor-rich :deep(ul + p),
+.doctor-rich :deep(details) {
+  margin-top: 10px;
+}
+
+.doctor-rich :deep(ul) {
+  padding-left: 18px;
+}
+
+.doctor-rich :deep(li + li) {
+  margin-top: 6px;
+}
+
+.doctor-rich :deep(code) {
+  border-radius: 8px;
+  padding: 2px 6px;
+  background: rgba(23, 25, 29, 0.08);
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 0.92em;
+}
+
+.doctor-rich :deep(a) {
+  color: #1677ff;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+.doctor-rich :deep(.chat-thinking) {
+  border: 1px solid rgba(22, 119, 255, 0.15);
+  border-radius: 16px;
+  padding: 10px 12px;
+  background: rgba(22, 119, 255, 0.04);
+}
+
+.doctor-rich :deep(.chat-thinking summary) {
+  cursor: pointer;
+  color: #4f6480;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.doctor-rich :deep(.chat-thinking pre) {
+  margin-top: 10px;
+  white-space: pre-wrap;
+  color: #51667f;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.55;
 }
 
 .message-row.user p {
