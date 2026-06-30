@@ -7,7 +7,6 @@ import {
   HeartOutlined,
   LogoutOutlined,
   MedicineBoxOutlined,
-  MessageOutlined,
   ReadOutlined,
   RightOutlined,
   SafetyCertificateOutlined,
@@ -21,11 +20,11 @@ const router = useRouter()
 const user = ref(getStoredUser())
 const profile = ref(null)
 const toastText = ref('')
-const showSettings = ref(false)
-const privacyAgreed = ref(true)
-const smartAnalysisEnabled = ref(true)
 
-const displayName = computed(() => user.value?.nickname || user.value?.username || '未登录')
+const displayName = computed(() => {
+  return user.value?.nickname || user.value?.username || '未登录'
+})
+
 const completion = computed(() => {
   return profile.value?.completion_rate || profile.value?.profile?.completion_rate || 0
 })
@@ -71,10 +70,9 @@ const healthRows = [
   },
 ]
 
-const personalRows = []
-
 function showToast(text) {
   toastText.value = text
+
   window.setTimeout(() => {
     toastText.value = ''
   }, 2200)
@@ -89,27 +87,31 @@ async function loadData() {
   if (meResponse.status === 'fulfilled') {
     user.value = meResponse.value.data?.user || meResponse.value.data || user.value
   }
+
   if (profileResponse.status === 'fulfilled') {
     profile.value = profileResponse.value.data
   }
 }
 
 function go(route, query = undefined) {
-  router.push({ name: route, query })
-}
-
-function openSettings() {
-  showSettings.value = true
+  router.push({
+    name: route,
+    query,
+  })
 }
 
 function logout() {
   clearAuthSession()
   showToast('已退出登录。')
-  router.push({ name: 'login' })
+  router.push({
+    name: 'login',
+  })
 }
 
 function handleTabChange(key) {
-  router.push({ name: key })
+  router.push({
+    name: key,
+  })
 }
 
 onMounted(loadData)
@@ -120,14 +122,20 @@ onMounted(loadData)
     <section class="profile-phone">
       <div class="profile-scroll">
         <header class="profile-hero">
-          <button class="profile-user" type="button" @click="go('personalInfo')">
+          <button
+            class="profile-user"
+            type="button"
+            @click="go('personalInfo')"
+          >
             <div class="avatar-tile">
               <span>{{ displayName.slice(0, 1) }}</span>
             </div>
+
             <div class="user-copy">
               <h1>{{ displayName }}</h1>
               <p>健康号：diafit_{{ completion || 0 }}</p>
             </div>
+
             <RightOutlined class="edit-arrow" />
           </button>
         </header>
@@ -140,14 +148,22 @@ onMounted(loadData)
             class="profile-row"
             @click="go(row.route, row.query)"
           >
-            <span class="row-icon" :class="row.tone"><component :is="row.icon" /></span>
+            <span class="row-icon" :class="row.tone">
+              <component :is="row.icon" />
+            </span>
+
             <span class="row-copy">
               <strong>{{ row.title }}</strong>
               <small>{{ row.desc }}</small>
             </span>
-            <em v-if="row.title === '健康档案'">{{ completion }}%</em>
+
+            <em v-if="row.title === '健康档案'">
+              {{ completion }}%
+            </em>
+
             <RightOutlined />
           </button>
+
           <button
             v-for="row in healthRows"
             :key="row.title"
@@ -155,104 +171,94 @@ onMounted(loadData)
             class="profile-row"
             @click="go(row.route, row.query)"
           >
-            <span class="row-icon" :class="row.tone"><component :is="row.icon" /></span>
+            <span class="row-icon" :class="row.tone">
+              <component :is="row.icon" />
+            </span>
+
             <span class="row-copy">
               <strong>{{ row.title }}</strong>
               <small>{{ row.desc }}</small>
             </span>
+
             <RightOutlined />
           </button>
-          <button type="button" class="profile-row" @click="go('news')">
-            <span class="row-icon red"><ReadOutlined /></span>
+
+          <button
+            type="button"
+            class="profile-row"
+            @click="go('news')"
+          >
+            <span class="row-icon red">
+              <ReadOutlined />
+            </span>
+
             <span class="row-copy">
               <strong>健康资讯</strong>
               <small>阅读控糖和复查内容</small>
             </span>
-            <RightOutlined />
-          </button>
-          <button
-            v-for="row in personalRows"
-            :key="row.title"
-            type="button"
-            class="profile-row"
-            @click="go(row.route)"
-          >
-            <span class="row-icon" :class="row.tone"><component :is="row.icon" /></span>
-            <span class="row-copy">
-              <strong>{{ row.title }}</strong>
-              <small>{{ row.desc }}</small>
-            </span>
+
             <RightOutlined />
           </button>
 
-          <button type="button" class="profile-row account-row" @click="openSettings">
-            <span class="row-icon blue"><SafetyCertificateOutlined /></span>
+          <button
+            type="button"
+            class="profile-row account-row"
+            @click="go('privacySettings')"
+          >
+            <span class="row-icon blue">
+              <SafetyCertificateOutlined />
+            </span>
+
             <span class="row-copy">
               <strong>账号与隐私设置</strong>
-              <small>健康数据仅用于档案、智能分析和个性化建议</small>
+              <small>账号安全、消息提醒和健康数据使用偏好</small>
             </span>
+
             <RightOutlined />
           </button>
-          <button type="button" class="profile-row" @click="showSettings = true">
-            <span class="row-icon slate"><SettingOutlined /></span>
+
+          <button
+            type="button"
+            class="profile-row"
+            @click="go('dataAuthorization')"
+          >
+            <span class="row-icon slate">
+              <SettingOutlined />
+            </span>
+
             <span class="row-copy">
               <strong>数据授权管理</strong>
-              <small>撤回同意后，将不再用于智能分析</small>
+              <small>查看或撤回智能分析与个性化建议授权</small>
             </span>
+
             <RightOutlined />
           </button>
         </section>
 
-        <button class="logout-row" type="button" @click="logout">
+        <button
+          class="logout-row"
+          type="button"
+          @click="logout"
+        >
           <LogoutOutlined />
           退出登录
         </button>
       </div>
 
-      <LiquidTabBar active-key="profile" @change="handleTabChange" />
-      <transition name="settings">
-        <section v-if="showSettings" class="settings-mask" @click.self="showSettings = false">
-          <div class="settings-panel">
-            <header>
-              <strong>账号与隐私</strong>
-              <button type="button" @click="showSettings = false">完成</button>
-            </header>
+      <LiquidTabBar
+        active-key="profile"
+        @change="handleTabChange"
+      />
 
-            <button class="settings-user" type="button" @click="go('personalInfo')">
-              <span>{{ displayName.slice(0, 1) }}</span>
-              <div>
-                <strong>{{ displayName }}</strong>
-                <small>点击维护出生日期、性别和家乡</small>
-              </div>
-              <RightOutlined />
-            </button>
-
-            <div class="settings-row">
-              <span>
-                <strong>健康数据授权</strong>
-                <small>用于档案、智能分析和个性化建议</small>
-              </span>
-              <van-switch v-model="privacyAgreed" size="22px" active-color="#1677ff" />
-            </div>
-
-            <div class="settings-row">
-              <span>
-                <strong>智能分析上下文</strong>
-                <small>关闭后，AI 助手不读取健康档案摘要</small>
-              </span>
-              <van-switch v-model="smartAnalysisEnabled" size="22px" active-color="#00b86b" />
-            </div>
-
-            <button class="settings-link" type="button" @click="go('messages')">
-              <MessageOutlined />
-              消息与提醒
-              <RightOutlined />
-            </button>
-          </div>
-        </section>
-      </transition>
       <transition name="toast">
-        <div v-if="toastText" class="app-toast" role="status" aria-live="polite">{{ toastText }}</div>
+        <div
+          v-if="toastText"
+          class="app-toast"
+          role="status"
+          aria-live="polite"
+        >
+          {{ toastText }}
+        </div>
       </transition>
     </section>
   </main>
@@ -353,14 +359,6 @@ onMounted(loadData)
   white-space: nowrap;
 }
 
-.user-copy small {
-  display: inline-block;
-  margin-top: 8px;
-  color: #1677ff;
-  font-size: 12px;
-  font-weight: 900;
-}
-
 .profile-user > svg {
   color: #b7bcc4;
   font-size: 18px;
@@ -398,21 +396,17 @@ onMounted(loadData)
   border-top: 10px solid #f1f2f4;
 }
 
-.row-icon,
-.service-icon {
+.row-icon {
   display: grid;
+  width: 28px;
+  height: 28px;
   flex: 0 0 auto;
   place-items: center;
   border: 0;
+  border-radius: 0;
   color: #1677ff;
   background: transparent;
   font-size: 21px;
-}
-
-.row-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 0;
 }
 
 .blue {
@@ -420,19 +414,9 @@ onMounted(loadData)
   background: #eef5ff;
 }
 
-.green {
-  color: #00a870;
-  background: #e8f8f0;
-}
-
 .orange {
   color: #f06b00;
   background: #fff3e2;
-}
-
-.purple {
-  color: #6f42ff;
-  background: #f1edff;
 }
 
 .red {
@@ -494,121 +478,33 @@ onMounted(loadData)
   font-weight: 900;
 }
 
-.settings-mask {
+.app-toast {
   position: absolute;
   z-index: 80;
-  inset: 0;
-  display: flex;
-  align-items: flex-end;
-  background: rgba(15, 23, 42, 0.16);
-}
-
-.settings-panel {
-  width: 100%;
-  border-radius: 22px 22px 0 0;
-  padding: 18px 18px 24px;
-  background: #ffffff;
-  box-shadow: 0 -18px 42px rgba(19, 42, 86, 0.14);
-}
-
-.settings-panel header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 13px;
-}
-
-.settings-panel header strong {
-  color: #071a3d;
-  font-size: 17px;
-  font-weight: 900;
-}
-
-.settings-panel header button {
-  color: #1677ff;
-  background: transparent;
-  font-size: 13px;
-  font-weight: 900;
-}
-
-.settings-user,
-.settings-row,
-.settings-link {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  gap: 12px;
-  border-bottom: 1px solid #edf2f7;
-  padding: 14px 0;
-  background: #ffffff;
-  text-align: left;
-}
-
-.settings-user > span {
-  display: grid;
-  width: 42px;
-  height: 42px;
-  flex: 0 0 auto;
-  place-items: center;
-  border-radius: 14px;
-  color: #1677ff;
-  background: #e8f6ff;
-  font-size: 20px;
-  font-weight: 900;
-}
-
-.settings-user div,
-.settings-row > span {
-  min-width: 0;
-  flex: 1;
-}
-
-.settings-user strong,
-.settings-row strong,
-.settings-link {
-  color: #11203a;
-  font-size: 14px;
-  font-weight: 900;
-}
-
-.settings-user small,
-.settings-row small {
-  display: block;
-  margin-top: 4px;
-  color: #7c8ca3;
+  right: 50%;
+  bottom: calc(78px + env(safe-area-inset-bottom));
+  max-width: calc(100% - 48px);
+  border-radius: 999px;
+  padding: 10px 15px;
+  color: #ffffff;
+  background: rgba(19, 37, 66, 0.92);
+  box-shadow: 0 10px 24px rgba(20, 36, 65, 0.16);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 800;
   line-height: 1.35;
+  transform: translateX(50%);
 }
 
-.settings-link {
-  border-bottom: 0;
-  color: #1677ff;
+.toast-enter-active,
+.toast-leave-active {
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
 }
 
-.settings-link > svg:last-child,
-.settings-user > svg {
-  margin-left: auto;
-  color: #9aa8bb;
-}
-
-.settings-enter-active,
-.settings-leave-active {
-  transition: opacity 0.2s ease;
-}
-
-.settings-enter-active .settings-panel,
-.settings-leave-active .settings-panel {
-  transition: transform 0.22s ease;
-}
-
-.settings-enter-from,
-.settings-leave-to {
+.toast-enter-from,
+.toast-leave-to {
   opacity: 0;
-}
-
-.settings-enter-from .settings-panel,
-.settings-leave-to .settings-panel {
-  transform: translateY(20px);
+  transform: translate(50%, 10px);
 }
 </style>

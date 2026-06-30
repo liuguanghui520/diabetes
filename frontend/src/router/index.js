@@ -10,6 +10,9 @@ import NewsView from '../views/news/NewsView.vue'
 import AssistantView from '../views/assistant/AssistantView.vue'
 import UserCenterView from '../views/profile/UserCenterView.vue'
 import PersonalInfoView from '../views/profile/PersonalInfoView.vue'
+import PrivacySettingsView from '../views/profile/PrivacySettingsView.vue'
+import ChangePasswordView from '../views/profile/ChangePasswordView.vue'
+import DataAuthorizationView from '../views/profile/DataAuthorizationView.vue'
 import DoctorConsultView from '../views/doctor/DoctorConsultView.vue'
 import DoctorProfileView from '../views/doctor/DoctorProfileView.vue'
 import MessagesView from '../views/messages/MessagesView.vue'
@@ -68,6 +71,21 @@ const routes = [
         path: '/profile/info',
         name: 'personalInfo',
         component: PersonalInfoView,
+    },
+    {
+        path: '/profile/privacy',
+        name: 'privacySettings',
+        component: PrivacySettingsView,
+    },
+    {
+        path: '/profile/password',
+        name: 'changePassword',
+        component: ChangePasswordView,
+    },
+    {
+        path: '/profile/data-authorization',
+        name: 'dataAuthorization',
+        component: DataAuthorizationView,
     },
     {
         path: '/messages',
@@ -138,6 +156,7 @@ router.beforeEach((to) => {
                 replace: true,
             }
         }
+
         return true
     }
 
@@ -148,6 +167,7 @@ router.beforeEach((to) => {
                 replace: true,
             }
         }
+
         return true
     }
 

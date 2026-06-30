@@ -1,11 +1,22 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { CheckCircleFilled, CoffeeOutlined, FireOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons-vue'
+import {
+  CheckCircleFilled,
+  ClockCircleOutlined,
+  CoffeeOutlined,
+  FireOutlined,
+  LeftOutlined,
+  MedicineBoxOutlined,
+  RobotOutlined,
+  TrophyOutlined,
+} from '@ant-design/icons-vue'
 import LiquidTabBar from '../../components/navigation/LiquidTabBar.vue'
+import TopUserActions from '../../components/navigation/TopUserActions.vue'
 import { apiGet, apiPost, pollWorkflowRun } from '../../api/request'
 
 const router = useRouter()
+
 const mode = ref('plan')
 const plan = ref(null)
 const analysis = ref(null)
@@ -14,85 +25,184 @@ const generatingPlan = ref(false)
 const analyzing = ref(false)
 const doneMap = ref({})
 
-const emptyGroups = [
-  {
-    key: 'diet',
-    title: '饮食管理',
-    subtitle: '定制专属饮食计划',
-    tasks: [],
-  },
-  {
-    key: 'exercise',
-    title: '运动管理',
-    subtitle: '科学运动指导',
-    tasks: [],
-  },
-]
-
-const groupMeta = {
+const taskMeta = {
   diet: {
-    icon: CoffeeOutlined,
-    color: '#1d74ff',
-    soft: '#eef6ff',
-    accent: '#ff9f2f',
-    head: 'linear-gradient(135deg, #f78f2f 0%, #ffb454 44%, #2e8ee8 100%)',
     label: '饮食',
+    icon: CoffeeOutlined,
+    color: '#ff8a00',
+    soft: '#fff3df',
   },
   exercise: {
-    icon: FireOutlined,
-    color: '#16a37b',
-    soft: '#eaf8f2',
-    accent: '#20b486',
-    head: 'linear-gradient(135deg, #16a37b 0%, #29c7a6 42%, #2675d9 100%)',
     label: '运动',
+    icon: FireOutlined,
+    color: '#00a870',
+    soft: '#e6f8f0',
+  },
+  sleep: {
+    label: '睡眠',
+    icon: ClockCircleOutlined,
+    color: '#7c3aed',
+    soft: '#f0e9ff',
+  },
+  water: {
+    label: '饮水',
+    icon: MedicineBoxOutlined,
+    color: '#1677ff',
+    soft: '#eaf3ff',
+  },
+  glucose: {
+    label: '血糖',
+    icon: MedicineBoxOutlined,
+    color: '#00a6a6',
+    soft: '#ddf8f6',
+  },
+  review: {
+    label: '复查',
+    icon: ClockCircleOutlined,
+    color: '#ff4d4f',
+    soft: '#ffecec',
   },
 }
 
-const groupedTasks = computed(() => {
-  const apiTasks = Array.isArray(plan.value?.tasks) ? plan.value.tasks : []
-  if (!apiTasks.length) return emptyGroups
-
-  const groups = emptyGroups.map((group) => ({ ...group, tasks: [] }))
-  apiTasks.forEach((task, index) => {
-    const key = task.task_type || task.category || (index % 2 === 0 ? 'diet' : 'exercise')
-    const group = groups.find((item) => item.key === key) || groups[0]
-    group.tasks.push({
-      id: task.id || `api-${index}`,
-      title: task.title || '方案任务',
-      time: task.time || task.target_time || '建议',
-      text: task.description || task.desc || '来自个性化生活方案。',
-      completed: Boolean(task.completed),
-    })
-  })
-
-  return groups.filter((group) => group.tasks.length)
+const currentDateText = computed(() => {
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: 'long',
+    day: 'numeric',
+    weekday: 'short',
+  }).format(new Date())
 })
 
-const flatTasks = computed(() => groupedTasks.value.flatMap((group) => group.tasks.map((task) => ({
-  ...task,
-  group: group.key,
-  groupTitle: group.title,
-  completed: Boolean(task.completed),
-}))))
+const tasks = computed(() => {
+  const source = Array.isArray(plan.value?.tasks)
+    ? plan.value.tasks
+    : []
 
-const completedCount = computed(() => flatTasks.value.filter((task) => doneMap.value[task.id]).length)
-const completionRate = computed(() => flatTasks.value.length ? Math.round((completedCount.value / flatTasks.value.length) * 100) : 0)
+  return source.map((task, index) => {
+    const id = task.id || task.task_id || `task-${index}`
+
+    const taskType = normalizeTaskType(
+      task.task_type || task.category || task.type,
+      index,
+    )
+
+    return {
+      id,
+      taskType,
+      title: task.title || task.name || '生活任务',
+      description: task.description || task.desc || task.content || '按计划完成后即可打卡。',
+      target: task.target || task.target_value || '',
+      time: task.target_time || task.time || task.schedule_time || '全天',
+      completed: Object.prototype.hasOwnProperty.call(doneMap.value, id)
+        ? doneMap.value[id]
+        : Boolean(task.completed || task.is_completed),
+    }
+  })
+})
+
+const totalCount = computed(() => {
+  return tasks.value.length
+})
+
+const completedCount = computed(() => {
+  return tasks.value.filter((task) => task.completed).length
+})
+
+const completionRate = computed(() => {
+  if (totalCount.value === 0) {
+    return 0
+  }
+
+  return Math.round((completedCount.value / totalCount.value) * 100)
+})
+
+const planTitle = computed(() => {
+  return plan.value?.title || '今日生活方案'
+})
+
+const planSummary = computed(() => {
+  return plan.value?.goal_summary
+    || plan.value?.summary
+    || '生成个性化方案后，系统会根据你的健康档案安排每日任务。'
+})
+
+const planStatusText = computed(() => {
+  if (!totalCount.value) {
+    return '待生成'
+  }
+
+  if (completedCount.value === totalCount.value) {
+    return '今日已完成'
+  }
+
+  if (completedCount.value > 0) {
+    return '进行中'
+  }
+
+  return '待执行'
+})
+
+function normalizeTaskType(value, index) {
+  const type = String(value || '').toLowerCase()
+
+  if (taskMeta[type]) {
+    return type
+  }
+
+  if (type.includes('diet') || type.includes('food') || type.includes('meal')) {
+    return 'diet'
+  }
+
+  if (type.includes('exercise') || type.includes('sport')) {
+    return 'exercise'
+  }
+
+  if (type.includes('sleep')) {
+    return 'sleep'
+  }
+
+  if (type.includes('water')) {
+    return 'water'
+  }
+
+  if (type.includes('glucose') || type.includes('sugar')) {
+    return 'glucose'
+  }
+
+  if (type.includes('review') || type.includes('check')) {
+    return 'review'
+  }
+
+  return index % 2 === 0 ? 'diet' : 'exercise'
+}
+
+function getTaskMeta(type) {
+  return taskMeta[type] || taskMeta.review
+}
 
 function showToast(text) {
   toastText.value = text
+
   window.setTimeout(() => {
     toastText.value = ''
-  }, 1800)
+  }, 2000)
 }
 
 async function loadPlan() {
   try {
     const result = await apiGet('/api/plans/active')
-    plan.value = result.data?.plan || result.data
+
+    plan.value = result.data?.plan || result.data || null
+
     const nextDoneMap = {}
-    ;(plan.value?.tasks || []).forEach((task) => {
-      nextDoneMap[task.id] = Boolean(task.completed)
+
+    ;(plan.value?.tasks || []).forEach((task, index) => {
+      const id = task.id || task.task_id || `task-${index}`
+
+      nextDoneMap[id] = Boolean(
+        task.completed || task.is_completed,
+      )
     })
+
     doneMap.value = nextDoneMap
   } catch {
     plan.value = null
@@ -104,20 +214,30 @@ async function generatePlan() {
   generatingPlan.value = true
 
   try {
-    const result = await apiPost('/api/plans/generate', {
-      preferences: {
-        goal: '控糖、规律运动和复查提醒',
+    const result = await apiPost(
+      '/api/plans/generate',
+      {
+        preferences: {
+          goal: '控糖、规律运动、饮食管理和复查提醒',
+        },
       },
-    }, { idempotent: true })
+      {
+        idempotent: true,
+      },
+    )
+
     const requestId = result.data?.workflow?.request_id
+      || result.data?.request_id
+
     showToast('AI 生活方案已提交。')
 
     if (requestId) {
       const workflow = await pollWorkflowRun(requestId)
 
       if (workflow.status === 'failed') {
-        showToast(workflow.error_message || '生成方案失败，请稍后再试。')
-        return
+        throw new Error(
+          workflow.error_message || '生成方案失败，请稍后再试。',
+        )
       }
     }
 
@@ -130,53 +250,86 @@ async function generatePlan() {
   }
 }
 
+async function toggleTask(task) {
+  if (!task.id || String(task.id).startsWith('task-')) {
+    showToast('该任务暂未同步到后端。')
+    return
+  }
+
+  const nextCompleted = !task.completed
+
+  try {
+    await apiPost(
+      `/api/plan-tasks/${task.id}/completion`,
+      {
+        completed: nextCompleted,
+      },
+      {
+        idempotent: true,
+      },
+    )
+
+    doneMap.value = {
+      ...doneMap.value,
+      [task.id]: nextCompleted,
+    }
+
+    showToast(nextCompleted ? '已完成打卡。' : '已取消打卡。')
+  } catch (error) {
+    showToast(error.message || '打卡状态更新失败。')
+  }
+}
+
 async function loadAnalysis() {
   mode.value = 'analysis'
   analyzing.value = true
+  analysis.value = null
+
   try {
-    const result = await apiPost('/api/checkins/analysis', { days: 7 }, { idempotent: true })
+    const result = await apiPost(
+      '/api/checkins/analysis',
+      {
+        days: 7,
+      },
+      {
+        idempotent: true,
+      },
+    )
+
     const requestId = result.data?.request_id
+      || result.data?.workflow?.request_id
 
     if (requestId) {
       const workflow = await pollWorkflowRun(requestId)
 
       if (workflow.status === 'failed') {
-        throw new Error(workflow.error_message || 'AI 分析失败')
+        throw new Error(
+          workflow.error_message || 'AI 打卡分析失败。',
+        )
       }
 
-      analysis.value = workflow.result
+      analysis.value = workflow.result?.data
+        || workflow.result
+        || null
     } else {
-      analysis.value = result.data
+      analysis.value = result.data || null
     }
   } catch (error) {
     analysis.value = null
-    showToast(error.message || 'AI 分析暂不可用，请稍后再试。')
+    showToast(error.message || '打卡分析暂不可用，请稍后再试。')
   } finally {
     analyzing.value = false
   }
 }
 
-async function toggleTask(task) {
-  const next = !doneMap.value[task.id]
-  try {
-    await apiPost(`/api/plan-tasks/${task.id}/completion`, {
-      completed: next,
-    }, { idempotent: true })
-    doneMap.value = { ...doneMap.value, [task.id]: next }
-  } catch (error) {
-    showToast(error.message || '打卡状态更新失败。')
-    return
-  }
-
-  showToast(next ? '已打卡' : '已取消')
+function closeAnalysis() {
+  mode.value = 'plan'
 }
 
 function handleTabChange(key) {
-  router.push({ name: key === 'home' ? 'home' : key })
-}
-
-function getGroupMeta(key) {
-  return groupMeta[key] || groupMeta.diet
+  router.push({
+    name: key,
+  })
 }
 
 onMounted(loadPlan)
@@ -185,111 +338,245 @@ onMounted(loadPlan)
 <template>
   <main class="plan-page">
     <section class="plan-phone">
-      <header class="plan-nav">
-        <button type="button" aria-label="返回" @click="mode === 'analysis' ? mode = 'plan' : router.back()">
-          <LeftOutlined />
-        </button>
-        <h1>{{ mode === 'analysis' ? 'AI智能打卡分析' : '生活方案' }}</h1>
-        <button v-if="mode === 'plan'" type="button" :disabled="analyzing" @click="loadAnalysis">
-          {{ analyzing ? '分析中' : '打卡分析' }}
-        </button>
-        <span v-else></span>
+      <header
+        v-if="mode === 'plan'"
+        class="plan-nav plan-main-nav"
+      >
+        <h1>生活方案</h1>
+
+        <TopUserActions />
       </header>
 
-      <div v-if="mode === 'plan'" class="plan-scroll">
-        <section class="plan-summary">
-          <div>
-            <span>{{ plan?.title || '个性化方案' }}</span>
-            <p>{{ plan?.goal_summary || plan?.summary || '生成后会同步 Dify 生活方案，并替换下方默认任务。' }}</p>
-          </div>
-          <button type="button" :disabled="generatingPlan" @click="generatePlan">
-            {{ generatingPlan ? '生成中' : (plan?.id ? '重新生成' : 'AI生成') }}
-          </button>
-        </section>
+      <header
+        v-else
+        class="plan-nav plan-analysis-nav"
+      >
+        <button
+          type="button"
+          aria-label="返回生活方案"
+          @click="closeAnalysis"
+        >
+          <LeftOutlined />
+        </button>
 
-        <section v-if="flatTasks.length === 0" class="plan-empty">
-          <strong>还没有生活方案</strong>
-          <p>点击 AI 生成后，Dify 返回的真实方案会写入数据库，并显示在这里。</p>
-        </section>
+        <h1>打卡分析</h1>
 
-        <section v-for="group in groupedTasks" :key="group.key" class="plan-group">
-          <header
-            class="group-head"
-            :style="{ '--group-head': getGroupMeta(group.key).head, '--group-accent': getGroupMeta(group.key).accent }"
-          >
+        <span></span>
+      </header>
+
+      <div
+        v-if="mode === 'plan'"
+        class="plan-scroll"
+      >
+        <section class="plan-overview">
+          <header class="overview-head">
             <div>
-              <span class="group-icon">
-                <component :is="getGroupMeta(group.key).icon" />
-              </span>
-              <h2>{{ group.title }}</h2>
-              <p>{{ group.subtitle }}</p>
+              <span>{{ currentDateText }}</span>
+              <h2>{{ planTitle }}</h2>
             </div>
-            <span class="group-badge">{{ group.tasks.filter((task) => doneMap[task.id]).length }}/{{ group.tasks.length }}</span>
+
+            <span
+              class="overview-status"
+              :class="{
+                complete: completionRate === 100 && totalCount > 0,
+              }"
+            >
+              {{ planStatusText }}
+            </span>
           </header>
 
-          <button
-            v-for="task in group.tasks"
-            :key="task.id"
-            type="button"
-            class="plan-task"
-            :class="{ done: doneMap[task.id] }"
-            :style="{ '--task-color': getGroupMeta(group.key).color, '--task-soft': getGroupMeta(group.key).soft, '--task-accent': getGroupMeta(group.key).accent }"
-            :aria-pressed="doneMap[task.id] ? 'true' : 'false'"
-            @click="toggleTask({ ...task, group: group.key })"
-          >
-            <span class="task-status">
-              <CheckCircleFilled v-if="doneMap[task.id]" />
-              <i v-else></i>
-            </span>
-            <div>
-              <strong>{{ task.title }}</strong>
-              <p>{{ task.text }}</p>
-            </div>
-            <time>{{ task.time }}</time>
-          </button>
-        </section>
-
-        <section class="checkin-cards">
-          <h2>今日打卡记录</h2>
-          <button
-            v-for="group in groupedTasks"
-            :key="`card-${group.key}`"
-            type="button"
-            @click="loadAnalysis"
-          >
-            <span>{{ group.key === 'diet' ? '今日饮食' : '今日运动' }}</span>
-            <em>{{ group.title }}打卡</em>
-            <b>{{ group.tasks.filter((task) => doneMap[task.id]).length === group.tasks.length ? '已达成' : '待完成' }}</b>
-            <RightOutlined />
-          </button>
-          <p v-if="flatTasks.length === 0" class="checkin-empty">生成方案后即可开始打卡。</p>
-        </section>
-      </div>
-
-      <div v-else class="analysis-scroll">
-        <section class="analysis-card">
-          <h2>计划完成状态</h2>
-          <div class="ring" :class="{ low: (analysis?.completion_rate ?? completionRate) < 60 }">
-            {{ analysis?.completion_rate ?? completionRate }}%
-          </div>
-          <p v-if="analysis">
-            通过分析您上一周的打卡情况，饮食打卡完成{{ completedCount }}次，总完成率{{ analysis?.completion_rate ?? completionRate }}%。
+          <p class="overview-summary">
+            {{ planSummary }}
           </p>
-          <p v-else>AI 分析结果生成后会展示在这里。</p>
+
+          <div class="overview-progress">
+            <strong>
+              {{ completedCount }}
+              <small>/ {{ totalCount || '—' }}</small>
+            </strong>
+
+            <span>今日已完成任务</span>
+          </div>
+
+          <van-progress
+            :percentage="completionRate"
+            :show-pivot="false"
+            stroke-width="7"
+            color="#1677ff"
+            track-color="#dce8f7"
+          />
+
+          <div class="overview-actions">
+            <van-button
+              type="primary"
+              round
+              :loading="generatingPlan"
+              loading-text="生成中"
+              @click="generatePlan"
+            >
+              <RobotOutlined />
+              {{ plan?.id ? '重新生成方案' : 'AI 生成方案' }}
+            </van-button>
+
+            <van-button
+              plain
+              type="primary"
+              round
+              @click="loadAnalysis"
+            >
+              <TrophyOutlined />
+              打卡分析
+            </van-button>
+          </div>
         </section>
-        <section class="analysis-card">
-          <h2>生活评价</h2>
-          <p>{{ analysis?.evaluation }}</p>
+
+        <section class="today-section">
+          <header class="section-heading">
+            <div>
+              <span>今日安排</span>
+              <h2>任务清单</h2>
+            </div>
+
+            <small>
+              {{ completedCount }}/{{ totalCount || 0 }} 已完成
+            </small>
+          </header>
+
+          <div
+            v-if="tasks.length === 0"
+            class="task-empty"
+          >
+            <RobotOutlined />
+
+            <strong>还没有生活方案</strong>
+
+            <small>
+              点击“AI 生成方案”，系统会基于健康档案生成饮食、运动和复查任务。
+            </small>
+          </div>
+
+          <article
+            v-for="task in tasks"
+            :key="task.id"
+            class="task-row"
+            :class="{ done: task.completed }"
+          >
+            <button
+              type="button"
+              class="task-main"
+              :aria-pressed="task.completed"
+              @click="toggleTask(task)"
+            >
+              <span
+                class="task-icon"
+                :style="{
+                  color: getTaskMeta(task.taskType).color,
+                  background: getTaskMeta(task.taskType).soft,
+                }"
+              >
+                <component :is="getTaskMeta(task.taskType).icon" />
+              </span>
+
+              <span class="task-copy">
+                <em>{{ getTaskMeta(task.taskType).label }}</em>
+                <strong>{{ task.title }}</strong>
+                <small>
+                  {{ task.target ? `${task.target} · ` : '' }}{{ task.time }}
+                </small>
+              </span>
+
+              <span
+                class="task-status"
+                :class="{ complete: task.completed }"
+              >
+                <CheckCircleFilled v-if="task.completed" />
+                <span v-else>去打卡</span>
+              </span>
+            </button>
+          </article>
         </section>
-        <section class="analysis-card">
-          <h2>改进建议</h2>
-          <p>{{ analysis?.advice }}</p>
+
+        <section class="plan-tip">
+          <ClockCircleOutlined />
+
+          <div>
+            <strong>按计划完成即可打卡</strong>
+            <p>完成当天任务后，可以在“打卡分析”查看近 7 天的生活执行情况。</p>
+          </div>
         </section>
       </div>
 
-      <LiquidTabBar active-key="plan" @change="handleTabChange" />
+      <div
+        v-else
+        class="analysis-scroll"
+      >
+        <section class="analysis-overview">
+          <span>近 7 天任务完成率</span>
+
+          <strong>
+            {{ analysis?.completion_rate ?? completionRate }}%
+          </strong>
+
+          <van-progress
+            :percentage="analysis?.completion_rate ?? completionRate"
+            :show-pivot="false"
+            stroke-width="8"
+            color="#1677ff"
+            track-color="#dce8f7"
+          />
+
+          <p>
+            {{
+              analysis?.summary
+                || '继续保持饮食、运动和复查任务的规律完成，系统会逐步形成更准确的执行分析。'
+            }}
+          </p>
+        </section>
+
+        <section class="analysis-card">
+          <header>
+            <CheckCircleFilled />
+            <h2>生活评价</h2>
+          </header>
+
+          <p>
+            {{
+              analysis?.evaluation
+                || '当前还没有足够的连续打卡记录，请先从每天完成一项任务开始。'
+            }}
+          </p>
+        </section>
+
+        <section class="analysis-card">
+          <header>
+            <TrophyOutlined />
+            <h2>改进建议</h2>
+          </header>
+
+          <p>
+            {{
+              analysis?.advice
+                || '建议优先完成最容易执行的任务，例如记录饮食、饭后散步或按时休息。'
+            }}
+          </p>
+        </section>
+      </div>
+
+      <LiquidTabBar
+        v-if="mode === 'plan'"
+        active-key="plan"
+        @change="handleTabChange"
+      />
+
       <transition name="toast">
-        <div v-if="toastText" class="app-toast" role="status" aria-live="polite">{{ toastText }}</div>
+        <div
+          v-if="toastText"
+          class="app-toast"
+          role="status"
+          aria-live="polite"
+        >
+          {{ toastText }}
+        </div>
       </transition>
     </section>
   </main>
@@ -302,7 +589,7 @@ onMounted(loadPlan)
   min-height: 100dvh;
   justify-content: center;
   overflow: hidden;
-  background: #dfe8f5;
+  background: #dbe8f7;
 }
 
 .plan-phone {
@@ -314,33 +601,68 @@ onMounted(loadPlan)
   height: 100dvh;
   flex-direction: column;
   overflow: hidden;
-  background: #f7f9fc;
+  background: #f6f8fc;
+  box-shadow: 0 0 36px rgba(47, 87, 144, 0.1);
 }
 
 .plan-nav {
-  display: grid;
-  height: 52px;
   flex: 0 0 auto;
-  grid-template-columns: 52px minmax(0, 1fr) 84px;
-  align-items: center;
-  border-bottom: 1px solid #edf1f5;
-  background: #ffffff;
+  border: 0;
+  background: transparent;
 }
 
-.plan-nav h1 {
+.plan-main-nav {
+  display: flex;
+  height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px 4px;
+}
+
+.plan-main-nav h1 {
   margin: 0;
-  color: #101936;
+  color: #17243a;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: -0.3px;
+}
+
+.plan-main-nav :deep(.top-user-actions) {
+  gap: 6px;
+}
+
+.plan-analysis-nav {
+  display: grid;
+  height: 58px;
+  grid-template-columns: 46px minmax(0, 1fr) 46px;
+  align-items: center;
+  padding-top: 8px;
+}
+
+.plan-analysis-nav h1 {
+  margin: 0;
+  color: #17243a;
   font-size: 17px;
   font-weight: 900;
   text-align: center;
 }
 
-.plan-nav button {
-  color: #1f2937;
+.plan-analysis-nav button {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  justify-self: center;
+  border: 0;
+  border-radius: 50%;
+  color: #17243a;
   background: transparent;
   cursor: pointer;
-  font-size: 13px;
-  font-weight: 800;
+  font-size: 20px;
+}
+
+.plan-analysis-nav button:active {
+  background: rgba(255, 255, 255, 0.62);
 }
 
 .plan-scroll,
@@ -348,7 +670,7 @@ onMounted(loadPlan)
   min-height: 0;
   flex: 1;
   overflow-y: auto;
-  padding: 14px 15px 26px;
+  padding: 12px 16px 28px;
   scrollbar-width: none;
 }
 
@@ -357,283 +679,405 @@ onMounted(loadPlan)
   display: none;
 }
 
-.plan-summary {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+.plan-overview {
+  border: 1px solid #dceafa;
+  border-radius: 20px;
+  padding: 16px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(22, 119, 255, 0.12), transparent 36%),
+    linear-gradient(135deg, #ffffff, #edf6ff);
+  box-shadow: 0 10px 22px rgba(45, 89, 142, 0.07);
+}
+
+.overview-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 12px;
-  align-items: center;
-  margin-bottom: 14px;
-  border-radius: 8px;
-  padding: 13px 14px;
-  background: #ffffff;
-  box-shadow: 0 6px 16px rgba(27, 55, 95, 0.06);
 }
 
-.plan-summary span {
+.overview-head span,
+.section-heading span {
   display: block;
-  color: #101936;
-  font-size: 14px;
-  font-weight: 900;
-}
-
-.plan-summary p {
-  display: -webkit-box;
-  overflow: hidden;
-  margin: 5px 0 0;
-  color: #66748a;
+  color: #7187a4;
   font-size: 11px;
   font-weight: 800;
-  line-height: 1.45;
+}
+
+.overview-head h2 {
+  overflow: hidden;
+  margin: 5px 0 0;
+  color: #17243a;
+  font-size: 18px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-status {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: #1677ff !important;
+  background: #eaf3ff;
+  font-size: 10px !important;
+  font-weight: 900 !important;
+}
+
+.overview-status.complete {
+  color: #00a870 !important;
+  background: #e6f8f0;
+}
+
+.overview-summary {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 12px 0 0;
+  color: #71859e;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.58;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
 
-.plan-summary button {
-  border-radius: 999px;
-  padding: 8px 12px;
-  color: #ffffff;
-  background: #1677ff;
-  font-size: 12px;
-  font-weight: 900;
-}
-
-.plan-summary button:disabled,
-.plan-nav button:disabled {
-  opacity: 0.62;
-}
-
-.plan-empty,
-.checkin-empty {
-  border-radius: 8px;
-  padding: 18px 16px;
-  background: #ffffff;
-  box-shadow: 0 6px 16px rgba(27, 55, 95, 0.06);
-  text-align: center;
-}
-
-.plan-empty strong {
-  display: block;
-  color: #101936;
-  font-size: 15px;
-  font-weight: 900;
-}
-
-.plan-empty p,
-.checkin-empty {
-  margin: 8px 0 0;
-  color: #66748a;
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 1.55;
-}
-
-.plan-group {
-  margin-bottom: 18px;
-}
-
-.group-head {
+.overview-progress {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
-  overflow: hidden;
-  border-radius: 8px;
-  padding: 13px 14px;
-  color: #ffffff;
-  background:
-    radial-gradient(circle at 88% 22%, rgba(255,255,255,0.28), transparent 24%),
-    linear-gradient(135deg, rgba(255,255,255,0.16), transparent 42%),
-    var(--group-head);
-  box-shadow: 0 8px 18px rgba(45, 121, 231, 0.16);
+  gap: 12px;
+  margin: 18px 0 10px;
 }
 
-.group-head > div {
-  display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
-  column-gap: 10px;
-  align-items: center;
-}
-
-.group-icon {
-  display: grid;
-  width: 36px;
-  height: 36px;
-  grid-row: span 2;
-  place-items: center;
-  border-radius: 12px;
-  color: #ffffff;
-  background: rgba(255,255,255,0.2);
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.28);
-  font-size: 19px;
-}
-
-.group-head h2 {
-  margin: 0;
-  font-size: 16px;
+.overview-progress strong {
+  color: #1677ff;
+  font-size: 39px;
   font-weight: 900;
+  letter-spacing: -2px;
+  line-height: 1;
 }
 
-.group-head p {
-  margin: 3px 0 0;
-  font-size: 12px;
+.overview-progress strong small {
+  color: #6d84a0;
+  font-size: 15px;
+  letter-spacing: 0;
 }
 
-.group-badge {
-  border-radius: 4px;
-  padding: 5px 11px;
-  color: #13345b;
-  background: rgba(255, 255, 255, 0.82);
-  font-size: 12px;
-  font-weight: 900;
-}
-
-.plan-task {
-  display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) auto;
-  gap: 11px;
-  align-items: center;
-  margin-top: 10px;
-  border-left: 3px solid var(--task-accent);
-  border-radius: 8px;
-  padding: 13px 12px;
-  background: #ffffff;
-  box-shadow: 0 5px 14px rgba(31, 65, 110, 0.06);
-  cursor: pointer;
-  text-align: left;
-}
-
-.plan-task.done {
-  background:
-    linear-gradient(90deg, var(--task-soft), #ffffff 70%);
-}
-
-.task-status {
-  display: grid;
-  width: 32px;
-  height: 32px;
-  place-items: center;
-  border-radius: 12px;
-  color: #ffffff;
-  background: var(--task-color);
-  font-size: 16px;
-}
-
-.task-status i {
-  width: 10px;
-  height: 10px;
-  border: 2px solid currentColor;
-  border-radius: 50%;
-}
-
-.plan-task strong {
-  color: #111827;
-  font-size: 14px;
-  font-weight: 900;
-}
-
-.plan-task p {
-  margin: 6px 0 0;
-  color: #5f6f83;
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-.plan-task time {
-  align-self: start;
-  border-radius: 999px;
-  padding: 4px 8px;
-  color: var(--task-color);
-  background: color-mix(in srgb, var(--task-color) 10%, #ffffff);
+.overview-progress span {
+  margin-bottom: 3px;
+  color: #7890aa;
   font-size: 11px;
   font-weight: 800;
 }
 
-.checkin-cards {
-  margin-top: 20px;
+.overview-actions {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 10px;
+  margin-top: 16px;
 }
 
-.checkin-cards h2 {
-  margin: 0 0 11px;
-  color: #101936;
-  font-size: 16px;
+.overview-actions :deep(.van-button) {
+  height: 40px;
+  font-size: 12px;
   font-weight: 900;
 }
 
-.checkin-cards button {
+.overview-actions :deep(.van-button__content) {
+  gap: 5px;
+}
+
+.today-section {
+  margin-top: 25px;
+}
+
+.section-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 11px;
+}
+
+.section-heading h2 {
+  margin: 5px 0 0;
+  color: #17243a;
+  font-size: 19px;
+  font-weight: 900;
+}
+
+.section-heading small {
+  color: #8193a9;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.task-row {
+  overflow: hidden;
+  margin-top: 10px;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 7px 17px rgba(45, 89, 142, 0.06);
+}
+
+.task-row.done {
+  background: linear-gradient(90deg, #effaf6, #ffffff 72%);
+}
+
+.task-main {
   display: grid;
   width: 100%;
-  grid-template-columns: 58px minmax(0, 1fr) auto 20px;
-  align-items: center;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
   gap: 10px;
-  margin-top: 12px;
-  border-radius: 8px;
-  padding: 12px;
-  background: #ffffff;
-  box-shadow: 0 6px 16px rgba(27, 55, 95, 0.06);
+  align-items: center;
+  border: 0;
+  padding: 13px;
+  background: transparent;
+  cursor: pointer;
   text-align: left;
 }
 
-.checkin-cards span {
-  color: #1677ff;
-  font-size: 12px;
-  font-weight: 900;
+.task-main:active {
+  background: rgba(22, 119, 255, 0.03);
 }
 
-.checkin-cards em {
-  color: #536174;
-  font-size: 12px;
+.task-icon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 12px;
+  font-size: 18px;
+}
+
+.task-copy {
+  min-width: 0;
+}
+
+.task-copy em,
+.task-copy strong,
+.task-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-copy em {
+  color: #8495aa;
+  font-size: 9px;
   font-style: normal;
   font-weight: 800;
 }
 
-.checkin-cards b {
-  border-radius: 999px;
-  padding: 5px 11px;
-  color: #1d5cff;
-  background: #ecefff;
+.task-copy strong {
+  margin-top: 3px;
+  color: #25364d;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.task-copy small {
+  margin-top: 4px;
+  color: #8e9db0;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.task-status {
+  display: inline-flex;
+  min-width: 48px;
+  align-items: center;
+  justify-content: center;
+  color: #1677ff;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.task-status.complete {
+  color: #00a870;
+  font-size: 20px;
+}
+
+.task-empty {
+  display: grid;
+  min-height: 150px;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  border-radius: 16px;
+  color: #9aa8b8;
+  background: #ffffff;
+  box-shadow: 0 7px 17px rgba(45, 89, 142, 0.05);
+  text-align: center;
+}
+
+.task-empty svg {
+  color: #b4cae4;
+  font-size: 30px;
+}
+
+.task-empty strong {
+  color: #60758f;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.task-empty small {
+  max-width: 250px;
+  color: #9aa8b8;
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1.6;
+}
+
+.plan-tip {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  margin-top: 20px;
+  border-radius: 15px;
+  padding: 13px;
+  color: #5d7b9f;
+  background: #eaf3ff;
+}
+
+.plan-tip > svg {
+  margin-top: 1px;
+  color: #1677ff;
+  font-size: 19px;
+}
+
+.plan-tip strong {
+  display: block;
+  color: #365b88;
   font-size: 12px;
+  font-weight: 900;
+}
+
+.plan-tip p {
+  margin: 4px 0 0;
+  color: #6d87a7;
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1.55;
+}
+
+.analysis-overview,
+.analysis-card {
+  border-radius: 18px;
+  padding: 17px;
+  background: #ffffff;
+  box-shadow: 0 8px 18px rgba(45, 89, 142, 0.06);
+}
+
+.analysis-overview span {
+  color: #7890aa;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.analysis-overview strong {
+  display: block;
+  margin: 10px 0 13px;
+  color: #1677ff;
+  font-size: 44px;
+  font-weight: 900;
+  letter-spacing: -2px;
+}
+
+.analysis-overview p,
+.analysis-card p {
+  margin: 14px 0 0;
+  color: #71849c;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.7;
 }
 
 .analysis-card {
-  border-radius: 12px;
-  margin-bottom: 18px;
-  padding: 18px 16px;
-  background: #ffffff;
-  box-shadow: 0 5px 14px rgba(27, 55, 95, 0.05);
+  margin-top: 15px;
+}
+
+.analysis-card header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.analysis-card header svg {
+  color: #1677ff;
+  font-size: 18px;
 }
 
 .analysis-card h2 {
-  margin: 0 0 14px;
-  border-bottom: 1px dashed #dce4ee;
-  padding-bottom: 12px;
-  color: #082044;
-  font-size: 24px;
-  font-weight: 900;
-}
-
-.ring {
-  display: grid;
-  width: 94px;
-  height: 94px;
-  place-items: center;
-  border: 8px solid #18bd82;
-  border-left-color: #e5e9ef;
-  border-radius: 50%;
-  margin: 0 auto 18px;
-  color: #18bd82;
-  font-size: 20px;
-  font-weight: 900;
-}
-
-.ring.low {
-  border-color: #ff4d4f;
-  border-left-color: #e5e9ef;
-  color: #ff4d4f;
-}
-
-.analysis-card p {
   margin: 0;
-  color: #66748a;
-  font-size: 15px;
-  line-height: 1.65;
+  color: #25364d;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.app-toast {
+  position: absolute;
+  z-index: 80;
+  right: 50%;
+  bottom: calc(76px + env(safe-area-inset-bottom));
+  max-width: calc(100% - 48px);
+  border-radius: 999px;
+  padding: 10px 15px;
+  color: #ffffff;
+  background: rgba(20, 32, 51, 0.94);
+  box-shadow: 0 14px 24px rgba(20, 32, 51, 0.2);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.45;
+  transform: translateX(50%);
+}
+
+.toast-enter-active,
+.toast-leave-active {
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translate(50%, 10px);
+}
+
+@media (max-width: 360px) {
+  .plan-scroll,
+  .analysis-scroll {
+    padding-right: 13px;
+    padding-left: 13px;
+  }
+
+  .plan-main-nav {
+    padding-right: 13px;
+    padding-left: 13px;
+  }
+
+  .plan-main-nav h1 {
+    font-size: 18px;
+  }
+
+  .overview-actions {
+    gap: 8px;
+  }
+
+  .overview-actions :deep(.van-button) {
+    font-size: 11px;
+  }
+
+  .task-copy strong {
+    font-size: 12px;
+  }
+
+  .task-status {
+    min-width: 42px;
+  }
 }
 </style>

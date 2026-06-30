@@ -4,15 +4,15 @@ import { useRouter } from 'vue-router'
 import {
   FileProtectOutlined,
   HeartFilled,
+  LeftOutlined,
   LineChartOutlined,
   MedicineBoxOutlined,
   SafetyCertificateOutlined,
 } from '@ant-design/icons-vue'
-import LiquidTabBar from '../../components/navigation/LiquidTabBar.vue'
-import TopUserActions from '../../components/navigation/TopUserActions.vue'
 import { apiGet, apiPost, hasAuthSession, pollWorkflowRun } from '../../api/request'
 
 const router = useRouter()
+
 const toastText = ref('')
 const loading = ref(false)
 const assessing = ref(false)
@@ -28,21 +28,31 @@ const isLoggedIn = computed(() => {
   return hasAuthSession()
 })
 
-const profile = computed(() => profilePayload.value.profile || profilePayload.value || {})
+const profile = computed(() => {
+  return profilePayload.value.profile || profilePayload.value || {}
+})
 
 const latestMeasurements = computed(() => {
   const payload = profilePayload.value
-  return payload.latest_measurements || payload.today_measurements || payload.measurements || {
-    fasting_glucose: profile.value.fasting_glucose,
-    postprandial_glucose: profile.value.postprandial_glucose,
-    weight_kg: profile.value.weight_kg,
-    sbp_mm_hg: profile.value.sbp_mm_hg || profile.value.systolic_bp,
-  }
+
+  return payload.latest_measurements
+    || payload.today_measurements
+    || payload.measurements
+    || {
+      fasting_glucose: profile.value.fasting_glucose,
+      postprandial_glucose: profile.value.postprandial_glucose,
+      weight_kg: profile.value.weight_kg,
+      sbp_mm_hg: profile.value.sbp_mm_hg || profile.value.systolic_bp,
+    }
 })
 
-const latestRisk = computed(() => riskPayload.value || profilePayload.value.latest_risk || null)
+const latestRisk = computed(() => {
+  return riskPayload.value || profilePayload.value.latest_risk || null
+})
 
-const displayName = computed(() => userInfo.value?.nickname || userInfo.value?.username || '同学')
+const displayName = computed(() => {
+  return userInfo.value?.nickname || userInfo.value?.username || '同学'
+})
 
 const todayText = computed(() => {
   return new Intl.DateTimeFormat('zh-CN', {
@@ -53,18 +63,35 @@ const todayText = computed(() => {
 })
 
 const profileRate = computed(() => {
-  if (profile.value.completed) return 100
-  return clampNumber(profile.value.completion_rate || profile.value.completionRate || 0, 0, 100)
+  if (profile.value.completed) {
+    return 100
+  }
+
+  return clampNumber(
+    profile.value.completion_rate || profile.value.completionRate || 0,
+    0,
+    100,
+  )
 })
 
 const bodyMetrics = computed(() => {
   const height = numberOrNull(profile.value.height_cm)
-  const weight = numberOrNull(profile.value.weight_kg || latestMeasurements.value.weight_kg)
+  const weight = numberOrNull(
+    profile.value.weight_kg || latestMeasurements.value.weight_kg,
+  )
   const bmi = numberOrNull(profile.value.bmi) || calcBmi(height, weight)
   const waist = numberOrNull(profile.value.waist_cm)
-  const sbp = numberOrNull(profile.value.sbp_mm_hg || profile.value.systolic_bp || latestMeasurements.value.sbp_mm_hg)
+  const sbp = numberOrNull(
+    profile.value.sbp_mm_hg
+    || profile.value.systolic_bp
+    || latestMeasurements.value.sbp_mm_hg,
+  )
 
-  return { bmi, waist, sbp }
+  return {
+    bmi,
+    waist,
+    sbp,
+  }
 })
 
 const scoreCard = computed(() => {
@@ -109,8 +136,12 @@ const scoreCard = computed(() => {
   return {
     score: Number.isFinite(score) ? String(score) : '--',
     label: high ? '偏高' : '较稳',
-    desc: high ? '建议优先完善档案、规律记录指标，并生成每日方案。' : '继续保持记录节奏，定期复查关键指标。',
-    rate: Number.isFinite(score) ? clampNumber(Math.round((score / 51) * 100), 8, 100) : 60,
+    desc: high
+      ? '建议优先完善档案、规律记录指标，并生成每日方案。'
+      : '继续保持记录节奏，定期复查关键指标。',
+    rate: Number.isFinite(score)
+      ? clampNumber(Math.round((score / 51) * 100), 8, 100)
+      : 60,
     tone: high ? 'orange' : 'green',
     action: high ? '生成方案' : '填写档案',
   }
@@ -194,6 +225,7 @@ function createEmptyProfilePayload() {
 function readStoredUser() {
   try {
     const rawUser = localStorage.getItem('diabetesAuthUser')
+
     return rawUser ? JSON.parse(rawUser) : null
   } catch {
     return null
@@ -201,52 +233,103 @@ function readStoredUser() {
 }
 
 function numberOrNull(value) {
-  if (value === null || value === undefined || value === '') return null
+  if (value === null || value === undefined || value === '') {
+    return null
+  }
+
   const number = Number(value)
+
   return Number.isFinite(number) ? number : null
 }
 
 function clampNumber(value, min, max) {
   const number = Number(value)
-  if (!Number.isFinite(number)) return min
+
+  if (!Number.isFinite(number)) {
+    return min
+  }
+
   return Math.min(max, Math.max(min, Math.round(number)))
 }
 
 function calcBmi(height, weight) {
-  if (!height || !weight) return null
+  if (!height || !weight) {
+    return null
+  }
+
   return weight / (height / 100) ** 2
 }
 
 function formatValue(value, precision = 0) {
-  if (value === null || value === undefined || value === '') return '--'
+  if (value === null || value === undefined || value === '') {
+    return '--'
+  }
+
   const number = Number(value)
-  if (!Number.isFinite(number)) return '--'
-  return precision > 0 ? number.toFixed(precision) : String(Math.round(number))
+
+  if (!Number.isFinite(number)) {
+    return '--'
+  }
+
+  return precision > 0
+    ? number.toFixed(precision)
+    : String(Math.round(number))
 }
 
 function getBmiStatus(value) {
-  if (!value) return '待记录身高体重'
-  if (value >= 30) return '偏高，建议管理'
-  if (value >= 24) return '略高，关注体重'
+  if (!value) {
+    return '待记录身高体重'
+  }
+
+  if (value >= 30) {
+    return '偏高，建议管理'
+  }
+
+  if (value >= 24) {
+    return '略高，关注体重'
+  }
+
   return '处于较稳范围'
 }
 
 function glucoseStatus(value, type) {
-  if (type === 'fasting') return value >= 7 ? '偏高' : value >= 6.1 ? '临界' : '平稳'
-  return value >= 11.1 ? '偏高' : value >= 7.8 ? '临界' : '平稳'
+  if (type === 'fasting') {
+    return value >= 7
+      ? '偏高'
+      : value >= 6.1
+        ? '临界'
+        : '平稳'
+  }
+
+  return value >= 11.1
+    ? '偏高'
+    : value >= 7.8
+      ? '临界'
+      : '平稳'
 }
 
 function calculateAge(value) {
-  if (!value) return null
+  if (!value) {
+    return null
+  }
 
   const birth = new Date(value)
-  if (Number.isNaN(birth.getTime())) return null
+
+  if (Number.isNaN(birth.getTime())) {
+    return null
+  }
 
   const today = new Date()
   let age = today.getFullYear() - birth.getFullYear()
   const monthDiff = today.getMonth() - birth.getMonth()
 
-  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+  if (
+    monthDiff < 0
+    || (
+      monthDiff === 0
+      && today.getDate() < birth.getDate()
+    )
+  ) {
     age -= 1
   }
 
@@ -273,44 +356,107 @@ function formatMissingFields(fields) {
 
 function showToast(text) {
   toastText.value = text
-  if (toastTimer) window.clearTimeout(toastTimer)
+
+  if (toastTimer) {
+    window.clearTimeout(toastTimer)
+  }
+
   toastTimer = window.setTimeout(() => {
     toastText.value = ''
   }, 2000)
 }
 
 function requireLogin() {
-  if (isLoggedIn.value) return false
+  if (isLoggedIn.value) {
+    return false
+  }
+
   showToast('请先登录，再使用完整健康管理功能。')
+
   return true
 }
 
 function buildRiskPayload() {
   const source = profile.value
   const measurements = latestMeasurements.value
-  const age = Number(source.age_snapshot || source.age || calculateAge(source.birth_date))
-  const gender = source.gender === 'female' ? 'female' : source.gender === 'male' ? 'male' : ''
+  const age = Number(
+    source.age_snapshot
+    || source.age
+    || calculateAge(source.birth_date),
+  )
+
+  const gender = source.gender === 'female'
+    ? 'female'
+    : source.gender === 'male'
+      ? 'male'
+      : ''
+
   const height = numberOrNull(source.height_cm)
-  const weight = numberOrNull(source.weight_kg || measurements.weight_kg)
+
+  const weight = numberOrNull(
+    source.weight_kg || measurements.weight_kg,
+  )
+
   const waist = numberOrNull(source.waist_cm)
-  const sbp = numberOrNull(source.sbp_mm_hg || source.systolic_bp || measurements.sbp_mm_hg)
+
+  const sbp = numberOrNull(
+    source.sbp_mm_hg
+    || source.systolic_bp
+    || measurements.sbp_mm_hg,
+  )
 
   const missing = []
-  if (!Number.isFinite(age)) missing.push('出生日期')
-  if (!gender) missing.push('性别')
-  if (!height) missing.push('身高')
-  if (!weight) missing.push('体重')
-  if (!waist) missing.push('腰围')
-  if (!sbp) missing.push('收缩压')
-  if (source.family_history_diabetes === null || source.family_history_diabetes === undefined) missing.push('家族史')
-  if (source.diagnosed_diabetes === null || source.diagnosed_diabetes === undefined) missing.push('是否确诊')
 
-  if (missing.length) return { missing }
+  if (!Number.isFinite(age)) {
+    missing.push('出生日期')
+  }
+
+  if (!gender) {
+    missing.push('性别')
+  }
+
+  if (!height) {
+    missing.push('身高')
+  }
+
+  if (!weight) {
+    missing.push('体重')
+  }
+
+  if (!waist) {
+    missing.push('腰围')
+  }
+
+  if (!sbp) {
+    missing.push('收缩压')
+  }
+
+  if (
+    source.family_history_diabetes === null
+    || source.family_history_diabetes === undefined
+  ) {
+    missing.push('家族史')
+  }
+
+  if (
+    source.diagnosed_diabetes === null
+    || source.diagnosed_diabetes === undefined
+  ) {
+    missing.push('是否确诊')
+  }
+
+  if (missing.length) {
+    return {
+      missing,
+    }
+  }
 
   return {
     payload: {
       diagnosed_diabetes: Boolean(source.diagnosed_diabetes),
-      diabetes_type: source.diagnosed_diabetes ? source.diabetes_type || 'unknown' : null,
+      diabetes_type: source.diagnosed_diabetes
+        ? source.diabetes_type || 'unknown'
+        : null,
       age,
       gender,
       height_cm: height,
@@ -319,18 +465,28 @@ function buildRiskPayload() {
       sbp_mm_hg: Math.round(sbp),
       dbp_mm_hg: numberOrNull(source.dbp_mm_hg),
       family_history_diabetes: Boolean(source.family_history_diabetes),
-      past_history: Array.isArray(source.past_history) ? source.past_history : [],
+      past_history: Array.isArray(source.past_history)
+        ? source.past_history
+        : [],
       labs: {
-        fasting_glucose: numberOrNull(measurements.fasting_glucose || source.fasting_glucose),
-        postprandial_glucose: numberOrNull(measurements.postprandial_glucose || source.postprandial_glucose),
-        hba1c: numberOrNull(measurements.hba1c || source.hba1c),
+        fasting_glucose: numberOrNull(
+          measurements.fasting_glucose || source.fasting_glucose,
+        ),
+        postprandial_glucose: numberOrNull(
+          measurements.postprandial_glucose || source.postprandial_glucose,
+        ),
+        hba1c: numberOrNull(
+          measurements.hba1c || source.hba1c,
+        ),
       },
     },
   }
 }
 
 async function runRiskAssessment() {
-  if (requireLogin()) return
+  if (requireLogin()) {
+    return
+  }
 
   const { payload, missing } = buildRiskPayload()
 
@@ -342,13 +498,27 @@ async function runRiskAssessment() {
   assessing.value = true
 
   try {
-    const result = await apiPost('/api/risk-assessments', payload, { idempotent: true })
+    const result = await apiPost(
+      '/api/risk-assessments',
+      payload,
+      {
+        idempotent: true,
+      },
+    )
+
     riskPayload.value = result.data
-    showToast(result.data?.status === 'processing' ? 'AI 健康评估已提交。' : 'AI 健康评估已更新。')
+
+    showToast(
+      result.data?.status === 'processing'
+        ? 'AI 健康评估已提交。'
+        : 'AI 健康评估已更新。',
+    )
 
     const requestId = result.data?.workflow?.request_id || result.data?.request_id
+
     if (requestId && result.data?.status === 'processing') {
       const workflow = await pollWorkflowRun(requestId)
+
       if (workflow.status === 'failed') {
         showToast(workflow.error_message || 'AI 评估失败，请稍后再试。')
       } else {
@@ -356,7 +526,9 @@ async function runRiskAssessment() {
       }
     }
 
-    await loadHealthData({ silent: true })
+    await loadHealthData({
+      silent: true,
+    })
   } catch (error) {
     showToast(error.message || '评估失败，请稍后再试。')
   } finally {
@@ -380,10 +552,16 @@ async function loadHealthData({ silent = false } = {}) {
     ])
 
     profilePayload.value = profileResult.status === 'fulfilled'
-      ? { ...createEmptyProfilePayload(), ...(profileResult.value.data || {}) }
+      ? {
+        ...createEmptyProfilePayload(),
+        ...(profileResult.value.data || {}),
+      }
       : createEmptyProfilePayload()
 
-    if (profileResult.status === 'fulfilled' && profileResult.value.data?.user) {
+    if (
+      profileResult.status === 'fulfilled'
+      && profileResult.value.data?.user
+    ) {
       userInfo.value = profileResult.value.data.user
     }
 
@@ -391,7 +569,11 @@ async function loadHealthData({ silent = false } = {}) {
       ? riskResult.value.data
       : profilePayload.value.latest_risk || null
 
-    if (profileResult.status === 'rejected' && riskResult.status === 'rejected' && !silent) {
+    if (
+      profileResult.status === 'rejected'
+      && riskResult.status === 'rejected'
+      && !silent
+    ) {
       showToast('健康数据暂未同步，当前显示待完善状态。')
     }
   } finally {
@@ -400,7 +582,9 @@ async function loadHealthData({ silent = false } = {}) {
 }
 
 function goFeature(key) {
-  if (requireLogin()) return
+  if (requireLogin()) {
+    return
+  }
 
   const routeMap = {
     archive: 'healthArchive',
@@ -408,7 +592,9 @@ function goFeature(key) {
     metric: 'healthArchive',
   }
 
-  router.push({ name: routeMap[key] || 'healthArchive' })
+  router.push({
+    name: routeMap[key] || 'healthArchive',
+  })
 }
 
 function handleScoreAction() {
@@ -420,24 +606,46 @@ function handleScoreAction() {
   goFeature('archive')
 }
 
-function handleTabChange(key) {
-  router.push({ name: key === 'home' ? 'home' : key })
+function goBack() {
+  if (window.history.length > 1) {
+    router.back()
+    return
+  }
+
+  router.push({
+    name: 'profile',
+  })
 }
 
 function handleAuthChanged(event) {
   authRefreshKey.value += 1
   userInfo.value = event.detail?.user || readStoredUser()
-  loadHealthData({ silent: true })
+
+  loadHealthData({
+    silent: true,
+  })
 }
 
 onMounted(() => {
-  window.addEventListener('diabetes:auth-changed', handleAuthChanged)
-  loadHealthData({ silent: true })
+  window.addEventListener(
+    'diabetes:auth-changed',
+    handleAuthChanged,
+  )
+
+  loadHealthData({
+    silent: true,
+  })
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('diabetes:auth-changed', handleAuthChanged)
-  if (toastTimer) window.clearTimeout(toastTimer)
+  window.removeEventListener(
+    'diabetes:auth-changed',
+    handleAuthChanged,
+  )
+
+  if (toastTimer) {
+    window.clearTimeout(toastTimer)
+  }
 })
 </script>
 
@@ -447,29 +655,60 @@ onBeforeUnmount(() => {
       <div class="health-scroll">
         <header class="health-header">
           <div class="health-topbar">
-            <div>
+            <button
+              class="header-back"
+              type="button"
+              aria-label="返回上一页"
+              @click="goBack"
+            >
+              <LeftOutlined />
+            </button>
+
+            <div class="health-title">
               <p>{{ todayText }}</p>
               <h1>健康</h1>
             </div>
-            <TopUserActions />
           </div>
 
           <section class="score-panel" :class="scoreCard.tone">
             <div class="score-copy">
-              <van-tag round type="primary">预测分数</van-tag>
+              <van-tag round type="primary">
+                预测分数
+              </van-tag>
+
               <h2>{{ displayName }}，今天先看这一项</h2>
+
               <p>{{ scoreCard.desc }}</p>
+
               <div class="score-actions">
-                <van-button round type="primary" size="small" :loading="assessing" loading-text="评估中" @click="runRiskAssessment">
+                <van-button
+                  round
+                  type="primary"
+                  size="small"
+                  :loading="assessing"
+                  loading-text="评估中"
+                  @click="runRiskAssessment"
+                >
                   {{ latestRisk ? '重新评估' : 'AI评估' }}
                 </van-button>
-                <van-button round plain type="primary" size="small" @click="handleScoreAction">
+
+                <van-button
+                  round
+                  plain
+                  type="primary"
+                  size="small"
+                  @click="handleScoreAction"
+                >
                   {{ scoreCard.action }}
                 </van-button>
               </div>
             </div>
 
-            <button class="score-ring" type="button" @click="handleScoreAction">
+            <button
+              class="score-ring"
+              type="button"
+              @click="handleScoreAction"
+            >
               <van-circle
                 :current-rate="scoreCard.rate"
                 :rate="scoreCard.rate"
@@ -479,6 +718,7 @@ onBeforeUnmount(() => {
                 :color="scoreCard.tone === 'orange' ? '#ff7a00' : '#00c48c'"
                 size="108px"
               />
+
               <span class="score-center">
                 <strong>{{ scoreCard.score }}</strong>
                 <small>{{ scoreCard.label }}</small>
@@ -495,17 +735,33 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
-          <van-grid class="metric-grid" :border="false" :column-num="2" :gutter="10">
-            <van-grid-item v-for="item in metricTiles" :key="item.key" @click="goFeature('metric')">
+          <van-grid
+            class="metric-grid"
+            :border="false"
+            :column-num="2"
+            :gutter="10"
+          >
+            <van-grid-item
+              v-for="item in metricTiles"
+              :key="item.key"
+              @click="goFeature('metric')"
+            >
               <div class="metric-tile" :class="item.tone">
                 <div class="metric-top">
-                  <span><component :is="item.icon" /></span>
+                  <span>
+                    <component :is="item.icon" />
+                  </span>
+
                   <em>{{ item.desc }}</em>
                 </div>
+
                 <strong>
                   {{ item.value }}
-                  <small v-if="item.unit">{{ item.unit }}</small>
+                  <small v-if="item.unit">
+                    {{ item.unit }}
+                  </small>
                 </strong>
+
                 <p>{{ item.label }}</p>
               </div>
             </van-grid-item>
@@ -513,9 +769,15 @@ onBeforeUnmount(() => {
         </section>
       </div>
 
-      <LiquidTabBar active-key="profile" @change="handleTabChange" />
       <transition name="toast">
-        <div v-if="toastText" class="app-toast" role="status" aria-live="polite">{{ toastText }}</div>
+        <div
+          v-if="toastText"
+          class="app-toast"
+          role="status"
+          aria-live="polite"
+        >
+          {{ toastText }}
+        </div>
       </transition>
     </section>
   </main>
@@ -550,7 +812,7 @@ onBeforeUnmount(() => {
   min-height: 0;
   flex: 1;
   overflow-y: auto;
-  padding: 18px 18px 24px;
+  padding: 18px 18px calc(30px + env(safe-area-inset-bottom));
   scrollbar-width: none;
 }
 
@@ -561,8 +823,12 @@ onBeforeUnmount(() => {
 .health-topbar {
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
+}
+
+.health-title {
+  min-width: 0;
+  padding-top: 1px;
 }
 
 .health-topbar p,
@@ -582,6 +848,27 @@ onBeforeUnmount(() => {
   line-height: 1.2;
 }
 
+.header-back {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  padding: 0;
+  color: #17243a;
+  background: transparent;
+  cursor: pointer;
+  font-size: 22px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.header-back:active {
+  background: rgba(255, 255, 255, 0.46);
+  transform: scale(0.92);
+}
+
 .score-panel {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 112px;
@@ -592,20 +879,20 @@ onBeforeUnmount(() => {
   padding: 16px;
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(232, 243, 255, 0.92)),
-    #fff;
+    #ffffff;
   box-shadow: 0 18px 36px rgba(33, 62, 102, 0.08);
 }
 
 .score-panel.green {
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(230, 248, 240, 0.95)),
-    #fff;
+    #ffffff;
 }
 
 .score-panel.orange {
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(255, 242, 223, 0.95)),
-    #fff;
+    #ffffff;
 }
 
 .score-copy {
@@ -652,7 +939,13 @@ onBeforeUnmount(() => {
   align-self: center;
   border: 0;
   background: transparent;
+  cursor: pointer;
   font: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.score-ring:active {
+  transform: scale(0.97);
 }
 
 .score-center {
@@ -702,7 +995,7 @@ onBeforeUnmount(() => {
 }
 
 .metric-grid {
-  margin: 0 -4px 24px;
+  margin: 0 -4px;
 }
 
 .metric-grid :deep(.van-grid-item__content) {
@@ -804,8 +1097,60 @@ onBeforeUnmount(() => {
   --tone-bg: #ffecec;
 }
 
+.app-toast {
+  position: absolute;
+  z-index: 50;
+  right: 50%;
+  bottom: calc(26px + env(safe-area-inset-bottom));
+  max-width: calc(100% - 48px);
+  border-radius: 999px;
+  padding: 10px 15px;
+  color: #ffffff;
+  background: rgba(20, 32, 51, 0.94);
+  box-shadow: 0 14px 24px rgba(20, 32, 51, 0.2);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.45;
+  transform: translateX(50%);
+}
+
+.toast-enter-active,
+.toast-leave-active {
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translate(50%, 10px);
+}
+
 button:active,
 .metric-grid :deep(.van-grid-item__content:active) {
   transform: scale(0.99);
+}
+
+@media (max-width: 360px) {
+  .health-scroll {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .score-panel {
+    grid-template-columns: minmax(0, 1fr) 98px;
+    padding: 14px;
+  }
+
+  .score-ring {
+    width: 98px;
+    min-width: 98px;
+    height: 98px;
+  }
+
+  .score-copy h2 {
+    font-size: 17px;
+  }
 }
 </style>

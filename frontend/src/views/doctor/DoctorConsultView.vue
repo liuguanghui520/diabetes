@@ -5,7 +5,9 @@ import {
   CameraOutlined,
   FileImageOutlined,
   MedicineBoxOutlined,
+  MessageOutlined,
   PaperClipOutlined,
+  RightOutlined,
   SearchOutlined,
   SendOutlined,
   SmileOutlined,
@@ -14,6 +16,7 @@ import { apiGet, authorizedFetch } from '../../api/request'
 
 const router = useRouter()
 const route = useRoute()
+
 const pageMode = ref('list')
 const activeDoctor = ref(1)
 const keyword = ref('')
@@ -22,60 +25,77 @@ const message = ref('')
 const toastText = ref('')
 const sending = ref(false)
 const chatBodyRef = ref(null)
-const filterStripRef = ref(null)
 const doctorFileInput = ref(null)
 const doctorFileAccept = ref('.pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg')
 const pendingFiles = ref([])
 const doctorList = ref([])
 const threads = reactive({})
 const readDoctorIds = ref(new Set())
-const filterDrag = reactive({
-  active: false,
-  moved: false,
-  startX: 0,
-  scrollLeft: 0,
-})
+
+const filterOrder = [
+  '全部',
+  '内分泌',
+  '营养',
+  '全科',
+  '心血管',
+  '慢病管理',
+]
 
 const filters = computed(() => {
-  const values = new Set(['全部'])
-  doctorList.value.forEach((doctor) => {
-    ;(doctor.tags || []).forEach((tag) => {
-      if (tag) values.add(tag)
-    })
+  const available = new Set(
+    doctorList.value.map((doctor) => doctor.category).filter(Boolean),
+  )
+
+  return filterOrder.filter((item) => {
+    return item === '全部' || available.has(item)
   })
-  return Array.from(values).slice(0, 8)
 })
 
-const currentDoctor = computed(() => doctorList.value.find((item) => item.id === activeDoctor.value) || doctorList.value[0] || null)
+const currentDoctor = computed(() => {
+  return doctorList.value.find((item) => item.id === activeDoctor.value)
+    || doctorList.value[0]
+    || null
+})
 
 const filteredDoctors = computed(() => {
   const query = keyword.value.trim().toLowerCase()
 
   return doctorList.value.filter((doctor) => {
-    const tags = doctor.tags || []
-    const matchFilter = activeFilter.value === '全部' || tags.includes(activeFilter.value)
+    const matchFilter = activeFilter.value === '全部'
+      || doctor.category === activeFilter.value
+
     const haystack = [
       doctor.name,
       doctor.title,
       doctor.department,
       doctor.hospital,
+      doctor.goodAt,
       doctor.last,
-      ...tags,
-    ].join(' ').toLowerCase()
+      doctor.category,
+      ...(doctor.tags || []),
+    ]
+      .join(' ')
+      .toLowerCase()
+
     const matchKeyword = !query || haystack.includes(query)
 
     return matchFilter && matchKeyword
   })
 })
 
-const currentMessages = computed(() => getThread(activeDoctor.value))
+const currentMessages = computed(() => {
+  return getThread(activeDoctor.value)
+})
 
 function getUnreadCount(doctor) {
-  return readDoctorIds.value.has(doctor.id) ? 0 : Number(doctor.unread || 0)
+  return readDoctorIds.value.has(doctor.id)
+    ? 0
+    : Number(doctor.unread || 0)
 }
 
 function showToast(text) {
   toastText.value = text
+
   window.setTimeout(() => {
     toastText.value = ''
   }, 2200)
@@ -92,17 +112,28 @@ function goBack() {
     return
   }
 
-  router.push({ name: 'health' })
+  router.push({
+    name: 'health',
+  })
 }
 
 function getThread(id) {
   if (!threads[id]) {
-    const doctor = doctorList.value.find((item) => item.id === id) || currentDoctor.value || {
-      greeting: '你好，可以把近期血糖、复查指标和问题发来。'
-    }
+    const doctor = doctorList.value.find((item) => item.id === id)
+      || currentDoctor.value
+      || {
+        greeting: '你好，可以把近期血糖、复查指标和问题发来。',
+      }
+
     threads[id] = [
-      { role: 'time', content: '刚刚' },
-      { role: 'assistant', content: doctor.greeting },
+      {
+        role: 'time',
+        content: '刚刚',
+      },
+      {
+        role: 'assistant',
+        content: doctor.greeting,
+      },
     ]
   }
 
@@ -111,89 +142,108 @@ function getThread(id) {
 
 async function scrollToBottom() {
   await nextTick()
-  if (!chatBodyRef.value) return
+
+  if (!chatBodyRef.value) {
+    return
+  }
 
   chatBodyRef.value.scrollTop = chatBodyRef.value.scrollHeight
 }
 
 async function openChat(doctor) {
   activeDoctor.value = doctor.id
+
   if (doctor.unread) {
-    readDoctorIds.value = new Set([...readDoctorIds.value, doctor.id])
+    readDoctorIds.value = new Set([
+      ...readDoctorIds.value,
+      doctor.id,
+    ])
   }
+
   getThread(doctor.id)
   pageMode.value = 'chat'
+
   await scrollToBottom()
 }
 
 function openDoctorProfile(doctor) {
-  router.push({ name: 'doctorProfile', params: { id: doctor.id } })
+  router.push({
+    name: 'doctorProfile',
+    params: {
+      id: doctor.id,
+    },
+  })
 }
 
-function setFilter(item) {
-  if (filterDrag.moved) return
-  activeFilter.value = item
-}
+function inferDoctorCategory(item) {
+  const text = [
+    item.department,
+    item.specialty,
+    item.intro,
+    item.profile_md,
+  ]
+    .filter(Boolean)
+    .join(' ')
 
-function beginFilterDrag(event) {
-  const row = filterStripRef.value
-  if (!row) return
-
-  filterDrag.active = true
-  filterDrag.moved = false
-  filterDrag.startX = event.clientX
-  filterDrag.scrollLeft = row.scrollLeft
-  row.setPointerCapture?.(event.pointerId)
-}
-
-function moveFilterDrag(event) {
-  const row = filterStripRef.value
-  if (!row || !filterDrag.active) return
-
-  const delta = event.clientX - filterDrag.startX
-  if (Math.abs(delta) > 4) {
-    filterDrag.moved = true
+  if (/内分泌|糖尿病|血糖|甲状腺/.test(text)) {
+    return '内分泌'
   }
-  row.scrollLeft = filterDrag.scrollLeft - delta
-}
 
-function endFilterDrag(event) {
-  filterDrag.active = false
-  filterStripRef.value?.releasePointerCapture?.(event.pointerId)
-  window.setTimeout(() => {
-    filterDrag.moved = false
-  }, 0)
-}
+  if (/营养|饮食|减重|体重/.test(text)) {
+    return '营养'
+  }
 
-function scrollFilterRow(event) {
-  const row = filterStripRef.value
-  if (!row || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
+  if (/心血管|高血压|血压|冠心病/.test(text)) {
+    return '心血管'
+  }
 
-  row.scrollLeft += event.deltaY
+  if (/全科|家庭|社区|综合/.test(text)) {
+    return '全科'
+  }
+
+  return '慢病管理'
 }
 
 async function readSse(response, target) {
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
+
   let buffer = ''
 
   while (true) {
     const { done, value } = await reader.read()
-    if (done) break
 
-    buffer += decoder.decode(value, { stream: true })
+    if (done) {
+      break
+    }
+
+    buffer += decoder.decode(value, {
+      stream: true,
+    })
+
     const chunks = buffer.split('\n\n')
     buffer = chunks.pop() || ''
 
     for (const chunk of chunks) {
-      const line = chunk.split('\n').find((item) => item.startsWith('data:'))
-      if (!line) continue
+      const line = chunk
+        .split('\n')
+        .find((item) => item.startsWith('data:'))
+
+      if (!line) {
+        continue
+      }
+
+      const rawText = line.replace(/^data:\s*/, '')
+
+      if (rawText === '[DONE]') {
+        continue
+      }
 
       try {
-        const data = JSON.parse(line.replace(/^data:\s*/, ''))
+        const data = JSON.parse(rawText)
         target.content += data.delta || data.content || ''
       } catch {
-        target.content += line.replace(/^data:\s*/, '')
+        target.content += rawText
       }
     }
   }
@@ -201,7 +251,10 @@ async function readSse(response, target) {
 
 async function sendDoctorMessage(preset = '') {
   const content = (preset || message.value).trim()
-  if (sending.value) return
+
+  if (sending.value) {
+    return
+  }
 
   if (!content && pendingFiles.value.length === 0) {
     showToast('先写下想咨询的问题。')
@@ -209,37 +262,56 @@ async function sendDoctorMessage(preset = '') {
   }
 
   const thread = getThread(activeDoctor.value)
-  const finalContent = content || `我上传了 ${pendingFiles.value.length} 个文件，请先帮我整理重点。`
+
+  const finalContent = content
+    || `我上传了 ${pendingFiles.value.length} 个文件，请先帮我整理重点。`
+
   const files = pendingFiles.value.slice()
+
   thread.push({
     role: 'user',
     content: files.length
       ? `${finalContent}\n${files.map((file) => `附件：${file.name}`).join('\n')}`
       : finalContent,
   })
-  const reply = { role: 'assistant', content: '' }
+
+  const reply = {
+    role: 'assistant',
+    content: '',
+  }
+
   thread.push(reply)
+
   message.value = ''
   pendingFiles.value = []
   sending.value = true
+
   await scrollToBottom()
 
   try {
-    const response = await authorizedFetch(`/api/doctors/${activeDoctor.value}/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        conversation_id: null,
-        message: finalContent,
-        attachments: files,
-      }),
-    })
+    const response = await authorizedFetch(
+      `/api/doctors/${activeDoctor.value}/chat`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          conversation_id: null,
+          message: finalContent,
+          attachments: files,
+        }),
+      },
+    )
 
     if (response.headers.get('Content-Type')?.includes('text/event-stream')) {
       await readSse(response, reply)
     } else {
       const payload = await response.json()
-      reply.content = payload.data?.reply || payload.data?.answer || '已收到咨询，我会按医学参考思路帮你梳理。'
+
+      reply.content = payload.data?.reply
+        || payload.data?.answer
+        || '已收到咨询，我会按医学参考思路帮你梳理。'
     }
   } catch (error) {
     reply.content = '医生咨询助手暂时不可用。急性不适或明显异常指标，请优先线下就医。'
@@ -252,6 +324,7 @@ async function sendDoctorMessage(preset = '') {
 
 function fillSummaryPrompt() {
   message.value = '请帮我按就诊前病情摘要整理：最近血糖、用药、饮食、运动、既往病史和需要问医生的问题。'
+
   showToast('已填入病情摘要模板。')
 }
 
@@ -260,6 +333,7 @@ function handleTool(type) {
     doctorFileAccept.value = type === 'image' || type === 'photo'
       ? 'image/*'
       : '.pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg'
+
     doctorFileInput.value?.click()
     return
   }
@@ -273,27 +347,45 @@ function handleTool(type) {
 }
 
 function handleDoctorFileChange(event) {
-  const files = Array.from(event.target.files || []).map((file) => ({
-    name: file.name,
-    size: file.size,
-    type: file.type || 'file',
-  }))
+  const files = Array.from(event.target.files || []).map((file) => {
+    return {
+      name: file.name,
+      size: file.size,
+      type: file.type || 'file',
+    }
+  })
 
-  if (files.length === 0) return
+  if (files.length === 0) {
+    return
+  }
 
-  pendingFiles.value = [...pendingFiles.value, ...files].slice(0, 4)
+  pendingFiles.value = [
+    ...pendingFiles.value,
+    ...files,
+  ].slice(0, 4)
+
   event.target.value = ''
+
   showToast(`已添加 ${files.length} 个附件。`)
 }
 
 function normalizeDoctor(item, index) {
   const specialty = item.specialty || item.intro || '糖尿病慢病管理'
-  const tags = specialty.split(/[、,，\\s]+/).filter(Boolean).slice(0, 4)
+  const category = inferDoctorCategory(item)
+
+  const tags = [
+    category,
+    ...specialty
+      .split(/[、,，\s]+/)
+      .filter(Boolean),
+  ]
+    .filter((item, index, array) => array.indexOf(item) === index)
+    .slice(0, 4)
 
   return {
     ...item,
     avatar: String(item.name || '医').slice(0, 1),
-    hospital: item.profile_md || item.department || '慢病管理门诊',
+    hospital: item.profile_md || item.hospital || item.department || '慢病管理门诊',
     license: item.license_no || '执业信息由管理员维护',
     consultCount: item.consult_count || '0',
     goodAt: specialty,
@@ -301,7 +393,8 @@ function normalizeDoctor(item, index) {
     score: item.score || '4.8',
     time: index === 0 ? '刚刚' : '今天',
     unread: 0,
-    tags: tags.length ? tags : ['糖尿病'],
+    category,
+    tags,
     last: item.intro || '可以把近期血糖、复查指标和问题发来，我先帮你整理重点。',
     greeting: item.greeting || `你好，我是${item.name || '医生'}咨询助手。可以帮你整理复查、指标和生活管理问题。`,
     tone: ['blue', 'green', 'orange', 'purple'][index % 4],
@@ -310,9 +403,17 @@ function normalizeDoctor(item, index) {
 
 async function loadDoctors() {
   try {
-    const result = await apiGet('/api/doctors', { auth: false })
-    const items = result.data?.items || []
+    const result = await apiGet('/api/doctors', {
+      auth: false,
+    })
+
+    const items = result.data?.items || result.data?.list || []
+
     doctorList.value = items.map(normalizeDoctor)
+
+    if (!filters.value.includes(activeFilter.value)) {
+      activeFilter.value = '全部'
+    }
   } catch {
     doctorList.value = []
   }
@@ -320,8 +421,13 @@ async function loadDoctors() {
 
 onMounted(async () => {
   await loadDoctors()
+
   const doctorId = Number(route.query.doctor || 0)
-  const doctor = doctorList.value.find((item) => item.id === doctorId)
+
+  const doctor = doctorList.value.find((item) => {
+    return item.id === doctorId
+  })
+
   if (doctor) {
     openChat(doctor)
   }
@@ -330,64 +436,71 @@ onMounted(async () => {
 
 <template>
   <main class="doctor-page">
-    <section class="doctor-phone" :class="{ chatting: pageMode === 'chat' }">
-      <van-nav-bar class="doctor-nav" left-arrow :border="false" @click-left="goBack">
+    <section
+      class="doctor-phone"
+      :class="{ chatting: pageMode === 'chat' }"
+    >
+      <van-nav-bar
+        class="doctor-nav"
+        left-arrow
+        :border="false"
+        @click-left="goBack"
+      >
         <template #title>
-          <div v-if="pageMode === 'chat'" class="chat-title">
+          <div
+            v-if="pageMode === 'chat' && currentDoctor"
+            class="chat-title"
+          >
             <strong>{{ currentDoctor.name }}</strong>
             <span>{{ currentDoctor.status }} · {{ currentDoctor.department }}</span>
           </div>
+
           <span v-else>医生咨询</span>
         </template>
       </van-nav-bar>
 
-      <section v-if="pageMode === 'list'" class="doctor-list-page">
-        <header class="list-hero">
-          <div class="hero-avatar"><MedicineBoxOutlined /></div>
-          <div>
-            <h1>找医生</h1>
-            <p>搜索科室、方向或问题，进入后像聊天一样咨询。</p>
-          </div>
-        </header>
-
+      <section
+        v-if="pageMode === 'list'"
+        class="doctor-list-page"
+      >
         <label class="search-box">
           <SearchOutlined />
+
           <input
             v-model="keyword"
             name="doctor_search"
             autocomplete="off"
-            aria-label="搜索医生、科室或控糖问题"
+            aria-label="搜索医生、科室或擅长方向"
             placeholder="搜索医生、科室、控糖问题"
           />
         </label>
 
-        <section
-          ref="filterStripRef"
-          class="filter-strip"
-          aria-label="医生筛选"
-          @wheel.prevent="scrollFilterRow"
-          @pointerdown="beginFilterDrag"
-          @pointermove="moveFilterDrag"
-          @pointerup="endFilterDrag"
-          @pointercancel="endFilterDrag"
-          @pointerleave="endFilterDrag"
+        <van-tabs
+          v-model:active="activeFilter"
+          class="doctor-tabs"
+          shrink
+          swipeable
+          animated
+          :ellipsis="false"
+          line-width="18"
+          line-height="3"
+          color="#1677ff"
+          title-active-color="#111827"
+          title-inactive-color="#6f7c8f"
         >
-          <button
+          <van-tab
             v-for="item in filters"
             :key="item"
-            type="button"
-            :class="{ active: activeFilter === item }"
-            @click="setFilter(item)"
-          >
-            {{ item }}
-          </button>
-        </section>
+            :name="item"
+            :title="item"
+          />
+        </van-tabs>
 
-        <section class="doctor-list">
+        <section class="doctor-feed">
           <article
             v-for="doctor in filteredDoctors"
             :key="doctor.id"
-            class="doctor-row"
+            class="doctor-item"
             role="button"
             tabindex="0"
             @click="openChat(doctor)"
@@ -400,55 +513,125 @@ onMounted(async () => {
               :aria-label="`查看${doctor.name}资料`"
               @click.stop="openDoctorProfile(doctor)"
             >
-              <span class="row-avatar" :class="doctor.tone">
-              {{ doctor.avatar }}
-              <i v-if="doctor.status === '在线'"></i>
+              <span
+                class="doctor-avatar"
+                :class="doctor.tone"
+                :style="doctor.avatar_url ? { backgroundImage: `url(${doctor.avatar_url})` } : {}"
+              >
+                <b v-if="!doctor.avatar_url">
+                  {{ doctor.avatar }}
+                </b>
+
+                <i v-if="doctor.status === '在线'"></i>
               </span>
             </button>
-            <span class="row-main">
-              <span class="row-top">
-                <strong>{{ doctor.name }}</strong>
-                <em>{{ doctor.time }}</em>
-              </span>
-              <span class="row-meta">
-                {{ doctor.department }} · {{ doctor.title }} · {{ doctor.score }} 分
-              </span>
-              <span class="row-last">{{ doctor.last }}</span>
-            </span>
-            <b v-if="getUnreadCount(doctor)" class="unread-badge">
+
+            <div class="doctor-content">
+              <div class="doctor-meta">
+                <span>{{ doctor.department || '慢病管理门诊' }}</span>
+                <em :class="{ offline: doctor.status === '离线' }">
+                  {{ doctor.status }}
+                </em>
+              </div>
+
+              <h2>
+                {{ doctor.name }}
+                <small>{{ doctor.title || '医生' }}</small>
+              </h2>
+
+              <p>{{ doctor.goodAt }}</p>
+
+              <footer>
+                <span>{{ doctor.hospital }}</span>
+
+                <b>
+                  <MessageOutlined />
+                  进入咨询
+                </b>
+              </footer>
+            </div>
+
+            <RightOutlined class="doctor-arrow" />
+
+            <strong
+              v-if="getUnreadCount(doctor)"
+              class="unread-badge"
+            >
               {{ getUnreadCount(doctor) > 99 ? '99+' : getUnreadCount(doctor) }}
-            </b>
+            </strong>
           </article>
 
-          <div v-if="filteredDoctors.length === 0" class="empty-result">
-            没找到匹配医生，换个关键词试试。
+          <div
+            v-if="filteredDoctors.length === 0"
+            class="empty-result"
+          >
+            <MedicineBoxOutlined />
+
+            <strong>暂未找到匹配医生</strong>
+
+            <small>
+              {{
+                keyword
+                  ? '换一个医生姓名、科室或擅长方向试试。'
+                  : '请在管理后台维护医生资料后展示。'
+              }}
+            </small>
           </div>
         </section>
       </section>
 
-      <section v-else class="chat-page">
-        <section ref="chatBodyRef" class="chat-body">
-          <template v-for="(item, index) in currentMessages" :key="index">
-            <div v-if="item.role === 'time'" class="time-line">{{ item.content }}</div>
-            <article v-else :class="['message-row', item.role]">
+      <section
+        v-else
+        class="chat-page"
+      >
+        <section
+          ref="chatBodyRef"
+          class="chat-body"
+        >
+          <template
+            v-for="(item, index) in currentMessages"
+            :key="index"
+          >
+            <div
+              v-if="item.role === 'time'"
+              class="time-line"
+            >
+              {{ item.content }}
+            </div>
+
+            <article
+              v-else
+              :class="['message-row', item.role]"
+            >
               <button
                 v-if="item.role === 'assistant'"
                 type="button"
                 class="message-avatar"
-                :class="currentDoctor.tone"
-                :aria-label="`查看${currentDoctor.name}简介`"
+                :class="currentDoctor?.tone"
+                :aria-label="`查看${currentDoctor?.name || '医生'}简介`"
                 @click="openDoctorProfile(currentDoctor)"
               >
-                {{ currentDoctor.avatar }}
+                {{ currentDoctor?.avatar || '医' }}
               </button>
+
               <p>{{ item.content || '正在整理回复…' }}</p>
-              <span v-if="item.role === 'user'" class="message-avatar user-avatar">我</span>
+
+              <span
+                v-if="item.role === 'user'"
+                class="message-avatar user-avatar"
+              >
+                我
+              </span>
             </article>
           </template>
         </section>
       </section>
 
-      <form v-if="pageMode === 'chat'" class="chat-input" @submit.prevent="sendDoctorMessage()">
+      <form
+        v-if="pageMode === 'chat'"
+        class="chat-input"
+        @submit.prevent="sendDoctorMessage()"
+      >
         <input
           v-model="message"
           name="doctor_message"
@@ -457,7 +640,11 @@ onMounted(async () => {
           enterkeyhint="send"
           placeholder="输入想咨询的问题"
         />
-        <div v-if="pendingFiles.length" class="doctor-attachments">
+
+        <div
+          v-if="pendingFiles.length"
+          class="doctor-attachments"
+        >
           <button
             v-for="(file, index) in pendingFiles"
             :key="`${file.name}-${index}`"
@@ -469,13 +656,50 @@ onMounted(async () => {
             {{ file.name }}
           </button>
         </div>
+
         <div class="tool-row">
-          <button type="button" aria-label="选择图片" @click="handleTool('image')"><FileImageOutlined /></button>
-          <button type="button" aria-label="拍照上传" @click="handleTool('photo')"><CameraOutlined /></button>
-          <button type="button" aria-label="添加表情" @click="handleTool('emoji')"><SmileOutlined /></button>
-          <button type="button" aria-label="选择文件" @click="handleTool('file')"><PaperClipOutlined /></button>
-          <button class="send-tool" type="submit" aria-label="发送咨询消息" :disabled="sending"><SendOutlined /></button>
+          <button
+            type="button"
+            aria-label="选择图片"
+            @click="handleTool('image')"
+          >
+            <FileImageOutlined />
+          </button>
+
+          <button
+            type="button"
+            aria-label="拍照上传"
+            @click="handleTool('photo')"
+          >
+            <CameraOutlined />
+          </button>
+
+          <button
+            type="button"
+            aria-label="添加表情"
+            @click="handleTool('emoji')"
+          >
+            <SmileOutlined />
+          </button>
+
+          <button
+            type="button"
+            aria-label="选择文件"
+            @click="handleTool('file')"
+          >
+            <PaperClipOutlined />
+          </button>
+
+          <button
+            class="send-tool"
+            type="submit"
+            aria-label="发送咨询消息"
+            :disabled="sending"
+          >
+            <SendOutlined />
+          </button>
         </div>
+
         <input
           ref="doctorFileInput"
           class="doctor-file-input"
@@ -488,7 +712,14 @@ onMounted(async () => {
       </form>
 
       <transition name="toast">
-        <div v-if="toastText" class="app-toast" role="status" aria-live="polite">{{ toastText }}</div>
+        <div
+          v-if="toastText"
+          class="app-toast"
+          role="status"
+          aria-live="polite"
+        >
+          {{ toastText }}
+        </div>
       </transition>
     </section>
   </main>
@@ -513,26 +744,26 @@ onMounted(async () => {
   height: 100dvh;
   flex-direction: column;
   overflow: hidden;
-  background: #eef4ff;
+  background: #ffffff;
 }
 
 .doctor-phone.chatting {
-  background: #f0f1f5;
+  background: #f0f2f6;
 }
 
 .doctor-nav {
   flex: 0 0 auto;
-  border-bottom: 1px solid rgba(16, 25, 54, 0.06);
-  --van-nav-bar-height: 47px;
-  --van-nav-bar-background: rgba(248, 251, 255, 0.92);
-  --van-nav-bar-icon-color: #101936;
-  --van-nav-bar-arrow-size: 23px;
-  --van-nav-bar-title-text-color: #101936;
-  --van-nav-bar-title-font-size: 15px;
+  border-bottom: 1px solid #edf1f5;
+  --van-nav-bar-height: 52px;
+  --van-nav-bar-background: rgba(255, 255, 255, 0.96);
+  --van-nav-bar-icon-color: #17243a;
+  --van-nav-bar-arrow-size: 22px;
+  --van-nav-bar-title-text-color: #17243a;
+  --van-nav-bar-title-font-size: 16px;
 }
 
 .doctor-phone.chatting .doctor-nav {
-  --van-nav-bar-background: rgba(244, 245, 248, 0.95);
+  --van-nav-bar-background: rgba(248, 249, 252, 0.97);
 }
 
 .doctor-nav :deep(.van-nav-bar__title) {
@@ -546,62 +777,29 @@ onMounted(async () => {
 }
 
 .chat-title strong {
-  color: #101936;
+  color: #17243a;
   font-size: 15px;
   font-weight: 900;
 }
 
 .chat-title span {
   margin-top: 4px;
-  color: #7d8795;
+  color: #8b95a4;
   font-size: 10px;
   font-weight: 800;
 }
 
 .doctor-list-page {
+  min-height: 0;
   flex: 1;
   overflow-y: auto;
-  padding: 14px 16px 24px;
+  padding: 14px 18px 28px;
   scrollbar-width: none;
 }
 
 .doctor-list-page::-webkit-scrollbar,
-.chat-body::-webkit-scrollbar,
-.filter-strip::-webkit-scrollbar {
+.chat-body::-webkit-scrollbar {
   display: none;
-}
-
-.list-hero {
-  display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
-  gap: 12px;
-  align-items: center;
-  padding: 2px 0 14px;
-}
-
-.hero-avatar {
-  display: grid;
-  width: 48px;
-  height: 48px;
-  place-items: center;
-  border-radius: 18px;
-  color: #ffffff;
-  background: linear-gradient(135deg, #1677ff, #00c48c);
-  font-size: 23px;
-}
-
-.list-hero h1 {
-  margin: 0;
-  color: #101936;
-  font-size: 23px;
-  font-weight: 900;
-}
-
-.list-hero p {
-  margin: 5px 0 0;
-  color: #6f7e92;
-  font-size: 11px;
-  font-weight: 750;
 }
 
 .search-box {
@@ -610,129 +808,145 @@ onMounted(async () => {
   gap: 8px;
   align-items: center;
   height: 42px;
-  border-radius: 15px;
-  padding: 0 13px;
-  color: #8a95a5;
-  background: #ffffff;
+  border-radius: 14px;
+  padding: 0 14px;
+  color: #78899d;
+  background: #eef3f8;
+  font-size: 17px;
 }
 
 .search-box input {
   min-width: 0;
   border: 0;
-  color: #101936;
+  outline: 0;
+  color: #17243a;
   background: transparent;
   font-size: 13px;
   font-weight: 800;
 }
 
 .search-box input::placeholder {
-  color: #9aa4b2;
+  color: #9aa7b5;
 }
 
-.filter-strip {
-  display: flex;
-  gap: 12px;
-  overflow-x: auto;
-  margin: 12px -16px 0;
-  padding: 0 16px 8px;
-  mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
-  overscroll-behavior-x: contain;
-  scroll-padding: 16px;
-  scroll-snap-type: x proximity;
-  scrollbar-width: none;
-  touch-action: pan-x;
-  -webkit-overflow-scrolling: touch;
-  cursor: grab;
-  user-select: none;
+.doctor-tabs {
+  margin: 10px -18px 0;
+  padding: 0;
+  --van-tabs-nav-background: #ffffff;
+  --van-tabs-bottom-bar-color: #1677ff;
+  --van-tab-active-text-color: #111827;
+  --van-tab-text-color: #6f7c8f;
+  --van-tab-font-size: 12px;
+  --van-tabs-line-height: 33px;
 }
 
-.filter-strip:active {
-  cursor: grabbing;
-}
-
-.filter-strip button {
-  flex: 0 0 auto;
-  height: 31px;
-  border-radius: 999px;
-  padding: 0 13px;
-  color: #60748e;
-  background: #ffffff;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 900;
-  scroll-snap-align: start;
-  transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
-}
-
-.filter-strip button.active {
-  color: #ffffff;
-  background: #1677ff;
-  transform: translateY(-1px);
-  box-shadow: 0 7px 16px rgba(22, 119, 255, 0.18);
-}
-
-.doctor-list {
+.doctor-tabs :deep(.van-tabs__wrap) {
+  height: 35px;
   overflow: hidden;
-  margin: 3px -16px 0;
+  border-bottom: 1px solid #edf1f5;
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 18px,
+    #000 calc(100% - 18px),
+    transparent 100%
+  );
+}
+
+.doctor-tabs :deep(.van-tabs__nav) {
+  gap: 2px;
+  padding: 0 18px;
+}
+
+.doctor-tabs :deep(.van-tab) {
+  min-width: 54px;
+  padding: 0 8px;
+  font-weight: 800;
+}
+
+.doctor-tabs :deep(.van-tab--active) {
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.doctor-tabs :deep(.van-tabs__line) {
+  bottom: 0;
+  height: 2px;
+  border-radius: 999px;
+  box-shadow: 0 2px 7px rgba(22, 119, 255, 0.24);
+}
+
+.doctor-tabs :deep(.van-tabs__content) {
+  display: none;
+}
+
+.doctor-feed {
+  overflow: hidden;
+  margin: 10px -18px 0;
+  border-top: 1px solid #edf1f5;
   background: #ffffff;
 }
 
-.doctor-row {
+.doctor-item {
   position: relative;
   display: grid;
   width: 100%;
-  grid-template-columns: 52px minmax(0, 1fr);
-  gap: 13px;
+  grid-template-columns: 52px minmax(0, 1fr) 16px;
+  gap: 12px;
   align-items: center;
-  padding: 14px 16px;
-  text-align: left;
+  border-bottom: 1px solid #edf1f5;
+  padding: 14px 18px;
+  color: #17243a;
   background: #ffffff;
+  cursor: pointer;
+  text-align: left;
+}
+
+.doctor-item:active {
+  background: #f7faff;
+}
+
+.avatar-button {
+  width: 52px;
+  height: 52px;
+  border: 0;
+  padding: 0;
+  background: transparent;
   cursor: pointer;
 }
 
-.doctor-row::after {
-  position: absolute;
-  right: 16px;
-  bottom: 0;
-  left: 81px;
-  height: 1px;
-  background: #eef1f5;
-  content: "";
-}
-
-.row-avatar,
-.message-avatar {
+.doctor-avatar {
   position: relative;
   display: grid;
   width: 52px;
   height: 52px;
   place-items: center;
+  overflow: hidden;
   border-radius: 50%;
   color: #ffffff;
   background: linear-gradient(135deg, #1677ff, #00b8ff);
+  background-position: center;
+  background-size: cover;
   font-size: 18px;
   font-weight: 900;
 }
 
-.row-avatar.green,
-.message-avatar.green {
+.doctor-avatar.green {
   background: linear-gradient(135deg, #00b86b, #00c8d8);
 }
 
-.row-avatar.orange,
-.message-avatar.orange {
+.doctor-avatar.orange {
   background: linear-gradient(135deg, #ff8a00, #ff4d4f);
 }
 
-.row-avatar.purple,
-.message-avatar.purple {
+.doctor-avatar.purple {
   background: linear-gradient(135deg, #7b3cff, #1677ff);
 }
 
-.row-avatar i {
+.doctor-avatar i {
   position: absolute;
   right: 2px;
-  bottom: 4px;
+  bottom: 3px;
   width: 11px;
   height: 11px;
   border: 2px solid #ffffff;
@@ -740,82 +954,151 @@ onMounted(async () => {
   background: #00c48c;
 }
 
-.row-main {
+.doctor-content {
   min-width: 0;
 }
 
-.row-top,
-.row-meta,
-.row-last {
+.doctor-meta {
   display: flex;
-  min-width: 0;
   align-items: center;
+  gap: 8px;
 }
 
-.row-top {
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.row-top strong {
+.doctor-meta span {
   overflow: hidden;
-  color: #141821;
-  font-size: 16px;
-  font-weight: 900;
+  color: #8e9caf;
+  font-size: 10px;
+  font-weight: 800;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.row-top em {
+.doctor-meta em {
   flex: 0 0 auto;
-  color: #a1a8b3;
-  font-size: 11px;
+  border-radius: 999px;
+  padding: 2px 6px;
+  color: #00a870;
+  background: #e6f8f0;
+  font-size: 9px;
   font-style: normal;
+  font-weight: 900;
+}
+
+.doctor-meta em.offline {
+  color: #9aa4b2;
+  background: #f0f3f6;
+}
+
+.doctor-content h2 {
+  overflow: hidden;
+  margin: 5px 0 0;
+  color: #17243a;
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doctor-content h2 small {
+  margin-left: 6px;
+  color: #7e8da1;
+  font-size: 11px;
   font-weight: 800;
 }
 
-.row-meta {
+.doctor-content p {
+  display: -webkit-box;
   overflow: hidden;
-  margin-top: 5px;
-  color: #69788b;
+  margin: 5px 0 0;
+  color: #73859b;
   font-size: 11px;
-  font-weight: 850;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-weight: 750;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
 }
 
-.row-last {
+.doctor-content footer {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.doctor-content footer > span {
   overflow: hidden;
-  margin-top: 4px;
-  color: #9aa4b2;
-  font-size: 11px;
+  color: #a0a9b5;
+  font-size: 10px;
   font-weight: 750;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.doctor-row .unread-badge {
+.doctor-content footer b {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 3px;
+  color: #1677ff;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.doctor-content footer b svg {
+  font-size: 12px;
+}
+
+.doctor-arrow {
+  color: #b5c0cf;
+  font-size: 14px;
+}
+
+.unread-badge {
   position: absolute;
-  top: 42px;
+  top: 20px;
   right: 16px;
   display: grid;
-  min-width: 18px;
-  height: 18px;
+  min-width: 17px;
+  height: 17px;
   place-items: center;
   border-radius: 999px;
-  padding: 0 5px;
+  padding: 0 4px;
   color: #ffffff;
   background: #ff4d4f;
-  font-size: 10px;
-  box-shadow: 0 0 0 2px #fff;
+  box-shadow: 0 0 0 2px #ffffff;
+  font-size: 9px;
 }
 
 .empty-result {
-  padding: 42px 16px;
-  color: #8a95a5;
+  display: grid;
+  min-height: 240px;
+  place-items: center;
+  align-content: center;
+  gap: 9px;
+  color: #9aa7b5;
   text-align: center;
-  font-size: 12px;
-  font-weight: 800;
+}
+
+.empty-result svg {
+  color: #c4d6ee;
+  font-size: 32px;
+}
+
+.empty-result strong {
+  color: #566779;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.empty-result small {
+  max-width: 230px;
+  color: #94a1b0;
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.5;
 }
 
 .chat-page {
@@ -856,10 +1139,29 @@ onMounted(async () => {
 }
 
 .message-avatar {
-  border: 0;
+  display: grid;
   width: 38px;
   height: 38px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  color: #ffffff;
+  background: linear-gradient(135deg, #1677ff, #00b8ff);
+  cursor: pointer;
   font-size: 13px;
+  font-weight: 900;
+}
+
+.message-avatar.green {
+  background: linear-gradient(135deg, #00b86b, #00c8d8);
+}
+
+.message-avatar.orange {
+  background: linear-gradient(135deg, #ff8a00, #ff4d4f);
+}
+
+.message-avatar.purple {
+  background: linear-gradient(135deg, #7b3cff, #1677ff);
 }
 
 .user-avatar {
@@ -870,7 +1172,7 @@ onMounted(async () => {
 .message-row p {
   max-width: 260px;
   margin: 0;
-  border-radius: 8px 18px 18px 18px;
+  border-radius: 8px 18px 18px;
   padding: 10px 12px;
   color: #101936;
   background: #ffffff;
@@ -889,7 +1191,7 @@ onMounted(async () => {
 .chat-input {
   flex: 0 0 auto;
   padding: 10px 16px calc(12px + env(safe-area-inset-bottom));
-  background: rgba(255, 255, 255, 0.94);
+  background: rgba(255, 255, 255, 0.96);
 }
 
 .chat-input input {
@@ -950,6 +1252,7 @@ onMounted(async () => {
   display: grid;
   height: 34px;
   place-items: center;
+  border: 0;
   color: #252a33;
   background: transparent;
   cursor: pointer;
@@ -964,5 +1267,74 @@ onMounted(async () => {
 
 .tool-row .send-tool:disabled {
   opacity: 0.58;
+}
+
+.app-toast {
+  position: absolute;
+  z-index: 60;
+  right: 50%;
+  bottom: calc(84px + env(safe-area-inset-bottom));
+  max-width: calc(100% - 48px);
+  border-radius: 999px;
+  padding: 10px 15px;
+  color: #ffffff;
+  background: rgba(20, 32, 51, 0.94);
+  box-shadow: 0 14px 24px rgba(20, 32, 51, 0.2);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.45;
+  transform: translateX(50%);
+}
+
+.toast-enter-active,
+.toast-leave-active {
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translate(50%, 10px);
+}
+
+@media (max-width: 360px) {
+  .doctor-list-page {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .doctor-tabs,
+  .doctor-feed {
+    margin-right: -14px;
+    margin-left: -14px;
+  }
+
+  .doctor-tabs :deep(.van-tabs__nav) {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .doctor-item {
+    grid-template-columns: 47px minmax(0, 1fr) 14px;
+    gap: 10px;
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .avatar-button,
+  .doctor-avatar {
+    width: 47px;
+    height: 47px;
+  }
+
+  .doctor-content h2 {
+    font-size: 15px;
+  }
+
+  .doctor-content footer b {
+    display: none;
+  }
 }
 </style>

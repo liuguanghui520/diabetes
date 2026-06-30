@@ -1,22 +1,19 @@
 <script setup>
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   AudioOutlined,
-  BarChartOutlined,
   CameraOutlined,
+  CloseOutlined,
   CopyOutlined,
-  FileDoneOutlined,
   HistoryOutlined,
-  HeartOutlined,
   LeftOutlined,
-  MessageOutlined,
   PaperClipOutlined,
   PlusOutlined,
+  RobotOutlined,
   SendOutlined,
   ShareAltOutlined,
   SoundOutlined,
-  UserOutlined,
 } from '@ant-design/icons-vue'
 import { apiGet, authorizedFetch } from '../../api/request'
 import LiquidTabBar from '../../components/navigation/LiquidTabBar.vue'
@@ -27,6 +24,7 @@ const welcomeMessage = {
 }
 
 const router = useRouter()
+
 const message = ref('')
 const sending = ref(false)
 const toastText = ref('')
@@ -34,103 +32,102 @@ const conversationId = ref(null)
 const localConversationId = ref(createLocalId())
 const fileInput = ref(null)
 const fileAccept = ref('.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg')
-const suggestionRowRef = ref(null)
 const attachments = ref([])
 const showHistory = ref(false)
-const hasStarted = ref(false)
 const conversationHistory = ref([])
 const loadingHistory = ref(false)
-const messages = ref([{ ...welcomeMessage }])
-const activeHistoryKey = computed(() => conversationId.value ? `remote-${conversationId.value}` : localConversationId.value)
-const currentConversationTitle = computed(() => {
-  const item = conversationHistory.value.find((history) => history.id === activeHistoryKey.value)
-  return item?.title || conversationTitle()
-})
-const suggestionDrag = reactive({
-  active: false,
-  moved: false,
-  startX: 0,
-  scrollLeft: 0,
-})
 
-const suggestions = ['控糖饮食', '风险解释', '生成计划', '报告怎么看', '复查提醒']
-const featureItems = [
-  { icon: MessageOutlined, tone: 'blue', title: '糖尿病信息问答', desc: '了解控糖饮食、复查指标和日常管理' },
-  { icon: BarChartOutlined, tone: 'purple', title: '糖尿病风险解释', desc: '结合档案和评估结果梳理风险重点' },
-  { icon: FileDoneOutlined, tone: 'green', title: '生活方案生成', desc: '把建议拆成饮食、运动和复查任务' },
-  { icon: UserOutlined, tone: 'yellow', title: '个人信息管理', desc: '记录并追踪健康档案和关键指标' },
+const messages = ref([
+  { ...welcomeMessage },
+])
+
+const suggestions = [
+  '控糖饮食',
+  '风险解读',
+  '生活计划',
+  '报告解读',
 ]
-const activeTask = ref(suggestions[0])
-const inputPlaceholder = computed(() => `${activeTask.value}，说说你的情况…`)
 
-function showToast(text) {
-  toastText.value = text
-  window.setTimeout(() => {
-    toastText.value = ''
-  }, 2200)
-}
+const activeTask = ref(suggestions[0])
+
+const activeHistoryKey = computed(() => {
+  return conversationId.value
+    ? `remote-${conversationId.value}`
+    : localConversationId.value
+})
+
+const inputPlaceholder = computed(() => {
+  return `${activeTask.value}，说说你的情况…`
+})
 
 function createLocalId() {
   return `local-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+function showToast(text) {
+  toastText.value = text
+
+  window.setTimeout(() => {
+    toastText.value = ''
+  }, 2200)
 }
 
 function cloneMessages(list) {
   return list.map((item) => ({
     role: item.role,
     content: item.content,
-    files: Array.isArray(item.files) ? item.files.map((file) => ({ ...file })) : undefined,
+    files: Array.isArray(item.files)
+      ? item.files.map((file) => ({ ...file }))
+      : undefined,
   }))
 }
 
 async function refreshHistory() {
+  loadingHistory.value = true
+
   try {
     const result = await apiGet('/api/assistant/conversations')
-    const remoteList = (result.data || []).map((item) => ({
+
+    conversationHistory.value = (result.data || []).map((item) => ({
       id: `remote-${item.id}`,
       remoteId: item.id,
       title: item.title || '新的健康对话',
-      updatedAt: item.updated_at ? new Date(item.updated_at).getTime() : Date.now(),
+      task: item.task || '',
+      updatedAt: item.updated_at
+        ? new Date(item.updated_at).getTime()
+        : Date.now(),
       status: item.status,
     }))
-    conversationHistory.value = remoteList
   } catch {
     conversationHistory.value = []
+  } finally {
+    loadingHistory.value = false
   }
-}
-
-function conversationTitle(list = messages.value) {
-  const userMessage = list.find((item) => item.role === 'user')?.content
-  return (userMessage || activeTask.value || '新的健康对话').slice(0, 22)
-}
-
-async function loadLatestConversation() {
-  await refreshHistory()
-  const latest = conversationHistory.value[0]
-  if (!latest?.remoteId) return
-
-  await loadConversationMessages(latest)
 }
 
 async function loadConversationMessages(item) {
   loadingHistory.value = true
+
   try {
-    const result = await apiGet(`/api/assistant/conversations/${item.remoteId}/messages`)
-    const serverMessages = (result.data || []).map((msg) => ({
-      role: msg.role,
-      content: msg.content,
+    const result = await apiGet(
+      `/api/assistant/conversations/${item.remoteId}/messages`,
+    )
+
+    const serverMessages = (result.data || []).map((messageItem) => ({
+      role: messageItem.role,
+      content: messageItem.content,
     }))
 
-    hasStarted.value = true
     localConversationId.value = item.id || `remote-${item.remoteId}`
     conversationId.value = item.remoteId
     activeTask.value = item.task || suggestions[0]
     attachments.value = []
     message.value = ''
+
     messages.value = serverMessages.length
       ? [{ ...welcomeMessage }, ...serverMessages]
       : [{ ...welcomeMessage }]
   } catch {
-    hasStarted.value = true
     localConversationId.value = item.id || createLocalId()
     conversationId.value = item.remoteId
     activeTask.value = item.task || suggestions[0]
@@ -140,6 +137,8 @@ async function loadConversationMessages(item) {
   } finally {
     loadingHistory.value = false
     showHistory.value = false
+
+    await nextTick()
   }
 }
 
@@ -149,18 +148,22 @@ async function loadConversation(item) {
     return
   }
 
-  hasStarted.value = true
   localConversationId.value = item.id || createLocalId()
   conversationId.value = item.remoteId || null
   activeTask.value = item.task || suggestions[0]
   attachments.value = []
   message.value = ''
-  messages.value = item.messages?.length ? cloneMessages(item.messages) : [{ ...welcomeMessage }]
+
+  messages.value = item.messages?.length
+    ? cloneMessages(item.messages)
+    : [{ ...welcomeMessage }]
+
   showHistory.value = false
+
+  await nextTick()
 }
 
 function newConversation() {
-  hasStarted.value = true
   localConversationId.value = createLocalId()
   conversationId.value = null
   activeTask.value = suggestions[0]
@@ -171,25 +174,8 @@ function newConversation() {
 }
 
 function openHistory() {
-  refreshHistory()
   showHistory.value = true
-}
-
-async function continueLatestConversation() {
-  await refreshHistory()
-  const latest = conversationHistory.value[0]
-
-  if (latest?.remoteId) {
-    await loadConversationMessages(latest)
-    return
-  }
-
-  if (latest?.messages?.length) {
-    loadConversation(latest)
-    return
-  }
-
-  startAssistant()
+  refreshHistory()
 }
 
 async function readSse(response, target) {
@@ -199,21 +185,36 @@ async function readSse(response, target) {
 
   while (true) {
     const { done, value } = await reader.read()
-    if (done) break
 
-    buffer += decoder.decode(value, { stream: true })
+    if (done) {
+      break
+    }
+
+    buffer += decoder.decode(value, {
+      stream: true,
+    })
+
     const chunks = buffer.split('\n\n')
     buffer = chunks.pop() || ''
 
     for (const chunk of chunks) {
-      const dataLine = chunk.split('\n').find((line) => line.startsWith('data:'))
-      if (!dataLine) continue
+      const dataLine = chunk
+        .split('\n')
+        .find((line) => line.startsWith('data:'))
+
+      if (!dataLine) {
+        continue
+      }
 
       try {
-        const data = JSON.parse(dataLine.replace(/^data:\s*/, ''))
+        const data = JSON.parse(
+          dataLine.replace(/^data:\s*/, ''),
+        )
+
         if (data.delta || data.content) {
           target.content += data.delta || data.content
         }
+
         if (data.conversation_id) {
           conversationId.value = data.conversation_id
         }
@@ -225,16 +226,30 @@ async function readSse(response, target) {
 }
 
 async function sendMessage(preset = '') {
-  hasStarted.value = true
   const content = (preset || message.value).trim()
-  if ((!content && attachments.value.length === 0) || sending.value) return
+
+  if ((!content && attachments.value.length === 0) || sending.value) {
+    return
+  }
 
   const pendingFiles = attachments.value.slice()
-  const visibleContent = content || `已添加 ${pendingFiles.length} 个文件，请帮我看一下。`
 
-  messages.value.push({ role: 'user', content: visibleContent, files: pendingFiles })
-  const reply = { role: 'assistant', content: '' }
+  const visibleContent = content
+    || `已添加 ${pendingFiles.length} 个文件，请帮我看一下。`
+
+  messages.value.push({
+    role: 'user',
+    content: visibleContent,
+    files: pendingFiles,
+  })
+
+  const reply = {
+    role: 'assistant',
+    content: '',
+  }
+
   messages.value.push(reply)
+
   message.value = ''
   attachments.value = []
   sending.value = true
@@ -242,7 +257,9 @@ async function sendMessage(preset = '') {
   try {
     const response = await authorizedFetch('/api/assistant/chat', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({
         conversation_id: conversationId.value,
         message: visibleContent,
@@ -256,12 +273,19 @@ async function sendMessage(preset = '') {
       await readSse(response, reply)
     } else {
       const payload = await response.json()
+
       if (!response.ok || (payload?.code !== undefined && payload.code !== 0)) {
         throw new Error(payload?.message || '发送失败。')
       }
-      reply.content = payload.data?.reply || payload.data?.answer || '我收到了，我们可以继续细化。'
+
+      reply.content = payload.data?.reply
+        || payload.data?.answer
+        || '我收到了，我们可以继续细化。'
+
       conversationId.value = payload.data?.conversation_id || conversationId.value
     }
+
+    refreshHistory()
   } catch (error) {
     reply.content = '助手暂时不可用，稍后再试一次。'
     showToast(error.message || '发送失败。')
@@ -285,9 +309,10 @@ async function shareText(text) {
         title: '糖尿病预治助手',
         text: content,
       })
+
       return
     } catch {
-      // 用户取消系统分享时回落为复制。
+      // 用户取消系统分享时，自动回退为复制。
     }
   }
 
@@ -302,25 +327,25 @@ function speakText(text) {
   }
 
   window.speechSynthesis.cancel()
+
   const utterance = new SpeechSynthesisUtterance(text)
+
   utterance.lang = 'zh-CN'
   utterance.rate = 0.94
+
   window.speechSynthesis.speak(utterance)
   showToast('正在朗读。')
 }
 
 function goBack() {
-  if (hasStarted.value) {
-    hasStarted.value = false
-    return
-  }
-
   if (window.history.length > 1) {
     router.back()
     return
   }
 
-  router.push({ name: 'health' })
+  router.push({
+    name: 'home',
+  })
 }
 
 function handleVoiceInput() {
@@ -339,29 +364,69 @@ function openFilePicker() {
 }
 
 function formatFileSize(size) {
-  if (!size) return ''
-  if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))}KB`
+  if (!size) {
+    return ''
+  }
+
+  if (size < 1024 * 1024) {
+    return `${Math.max(1, Math.round(size / 1024))}KB`
+  }
+
   return `${(size / 1024 / 1024).toFixed(1)}MB`
 }
 
 function formatHistoryTime(timestamp) {
-  if (!timestamp) return '刚刚'
+  if (!timestamp) {
+    return '刚刚'
+  }
 
   const date = new Date(timestamp)
-  if (Number.isNaN(date.getTime())) return '刚刚'
+
+  if (Number.isNaN(date.getTime())) {
+    return '刚刚'
+  }
 
   const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const targetDay = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+
+  const today = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+  )
+
+  const targetDay = new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+  )
+
   const dayDiff = Math.round((today - targetDay) / 86400000)
+
   const timeText = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
 
-  if (dayDiff === 0) return timeText
-  if (dayDiff === 1) return `昨天 ${timeText}`
-  if (dayDiff > 1 && dayDiff < 7) {
-    return ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][date.getDay()]
+  if (dayDiff === 0) {
+    return timeText
   }
-  if (date.getFullYear() === now.getFullYear()) return `${date.getMonth() + 1}月${date.getDate()}日`
+
+  if (dayDiff === 1) {
+    return `昨天 ${timeText}`
+  }
+
+  if (dayDiff > 1 && dayDiff < 7) {
+    return [
+      '周日',
+      '周一',
+      '周二',
+      '周三',
+      '周四',
+      '周五',
+      '周六',
+    ][date.getDay()]
+  }
+
+  if (date.getFullYear() === now.getFullYear()) {
+    return `${date.getMonth() + 1}月${date.getDate()}日`
+  }
 
   return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`
 }
@@ -373,10 +438,17 @@ function handleFileChange(event) {
     type: file.type || 'file',
   }))
 
-  if (files.length === 0) return
+  if (files.length === 0) {
+    return
+  }
 
-  attachments.value = [...attachments.value, ...files].slice(0, 4)
+  attachments.value = [
+    ...attachments.value,
+    ...files,
+  ].slice(0, 4)
+
   event.target.value = ''
+
   showToast(`已添加 ${files.length} 个文件。`)
 }
 
@@ -384,222 +456,237 @@ function removeAttachment(index) {
   attachments.value.splice(index, 1)
 }
 
-function scrollSuggestionRow(event) {
-  const row = suggestionRowRef.value
-  if (!row || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
-
-  row.scrollLeft += event.deltaY
-}
-
-function beginSuggestionDrag(event) {
-  const row = suggestionRowRef.value
-  if (!row) return
-
-  suggestionDrag.active = true
-  suggestionDrag.moved = false
-  suggestionDrag.startX = event.clientX
-  suggestionDrag.scrollLeft = row.scrollLeft
-  row.setPointerCapture?.(event.pointerId)
-}
-
-function moveSuggestionDrag(event) {
-  const row = suggestionRowRef.value
-  if (!row || !suggestionDrag.active) return
-
-  const delta = event.clientX - suggestionDrag.startX
-  if (Math.abs(delta) > 4) {
-    suggestionDrag.moved = true
-  }
-  row.scrollLeft = suggestionDrag.scrollLeft - delta
-}
-
-function endSuggestionDrag(event) {
-  suggestionDrag.active = false
-  suggestionRowRef.value?.releasePointerCapture?.(event.pointerId)
-  window.setTimeout(() => {
-    suggestionDrag.moved = false
-  }, 0)
-}
-
 function selectSuggestion(item) {
-  if (suggestionDrag.moved) return
   activeTask.value = item
 }
 
-function startAssistant() {
-  hasStarted.value = true
-}
-
 function handleTabChange(key) {
-  if (key === 'assistant') return
-  router.push({ name: key === 'home' ? 'home' : key })
+  if (key === 'assistant') {
+    return
+  }
+
+  router.push({
+    name: key === 'home' ? 'home' : key,
+  })
 }
 
 onMounted(refreshHistory)
 </script>
 
 <template>
-  <main class="chat-page">
-    <section class="chat-phone">
-      <template v-if="!hasStarted">
-        <header class="guide-header">
-          <h1>健康助手</h1>
-          <button type="button" aria-label="历史对话" @click="openHistory">
-            <HistoryOutlined />
-          </button>
-        </header>
+  <main class="assistant-shell">
+    <section class="assistant-phone">
+      <header class="q-header">
+        <button
+          type="button"
+          aria-label="返回"
+          @click="goBack"
+        >
+          <LeftOutlined />
+        </button>
 
-        <section class="guide-scroll">
-          <section class="assistant-hero">
-            <span class="hero-icon" aria-hidden="true">
-              <HeartOutlined />
-            </span>
-            <h2>今天想聊什么？</h2>
-            <p>饮食、风险、复查、报告……把问题发过来，帮你一步步理清楚。</p>
-          </section>
+        <h1>健康助手</h1>
 
-          <section class="quick-panel">
-            <button type="button" class="quick-action primary" @click="newConversation">
-              <MessageOutlined />
-              <span>
-                <strong>新建对话</strong>
-                <small>直接说出你想了解的问题</small>
-              </span>
-            </button>
-          </section>
+        <button
+          type="button"
+          aria-label="最近对话"
+          @click="openHistory"
+        >
+          <HistoryOutlined />
+        </button>
+      </header>
+
+      <div class="q-scroll">
+        <section class="assistant-brand">
+          <span class="brand-mark">健</span>
+
+          <div>
+            <strong>糖尿病智能助手</strong>
+
+            <small>
+              {{ conversationId ? `会话 #${conversationId}` : '新对话' }}
+              · 看风险、理报告、做今天能执行的清单
+            </small>
+          </div>
         </section>
-      </template>
 
-      <template v-else>
-        <header class="q-header">
-          <button type="button" aria-label="返回" @click="goBack">
-            <LeftOutlined />
-          </button>
-          <h1>健康助手</h1>
-          <button type="button" aria-label="历史对话" @click="openHistory">
-            <HistoryOutlined />
-          </button>
-        </header>
+        <section class="q-messages">
+          <article
+            v-for="(item, index) in messages"
+            :key="index"
+            class="q-message"
+            :class="item.role"
+          >
+            <p>{{ item.content || '生成中…' }}</p>
 
-        <div class="q-scroll">
-          <section class="assistant-brand">
-            <span class="brand-mark">健</span>
-            <div>
-              <strong>{{ currentConversationTitle }}</strong>
-              <small>{{ conversationId ? `会话 #${conversationId}` : '新对话' }} · 看风险、理报告、做今天能执行的清单</small>
-            </div>
-          </section>
-
-          <section class="q-messages">
-            <article
-              v-for="(item, index) in messages"
-              :key="index"
-              class="q-message"
-              :class="item.role"
+            <div
+              v-if="item.files?.length"
+              class="message-files"
             >
-              <p>{{ item.content || '生成中…' }}</p>
-              <div v-if="item.files?.length" class="message-files">
-                <span v-for="file in item.files" :key="file.name">
-                  <PaperClipOutlined />
-                  {{ file.name }}
-                </span>
-              </div>
-              <div v-if="item.role === 'assistant'" class="message-actions">
-                <button type="button" aria-label="朗读回复" @click="speakText(item.content)"><SoundOutlined /></button>
-                <button type="button" aria-label="分享回复" @click="shareText(item.content)"><ShareAltOutlined /></button>
-                <button type="button" aria-label="复制回复" @click="copyText(item.content)"><CopyOutlined /></button>
-              </div>
-            </article>
-          </section>
+              <span
+                v-for="file in item.files"
+                :key="file.name"
+              >
+                <PaperClipOutlined />
+                {{ file.name }}
+              </span>
+            </div>
+
+            <div
+              v-if="item.role === 'assistant'"
+              class="message-actions"
+            >
+              <button
+                type="button"
+                aria-label="朗读回复"
+                @click="speakText(item.content)"
+              >
+                <SoundOutlined />
+              </button>
+
+              <button
+                type="button"
+                aria-label="分享回复"
+                @click="shareText(item.content)"
+              >
+                <ShareAltOutlined />
+              </button>
+
+              <button
+                type="button"
+                aria-label="复制回复"
+                @click="copyText(item.content)"
+              >
+                <CopyOutlined />
+              </button>
+            </div>
+          </article>
+        </section>
+      </div>
+
+      <footer class="q-input-area">
+        <div class="suggestion-row">
+          <button
+            v-for="item in suggestions"
+            :key="item"
+            type="button"
+            :class="{ active: activeTask === item }"
+            :aria-pressed="activeTask === item"
+            @click="selectSuggestion(item)"
+          >
+            {{ item }}
+          </button>
         </div>
 
-        <footer class="q-input-area">
-          <div
-            ref="suggestionRowRef"
-            class="suggestion-row"
-            @wheel.prevent="scrollSuggestionRow"
-            @pointerdown="beginSuggestionDrag"
-            @pointermove="moveSuggestionDrag"
-            @pointerup="endSuggestionDrag"
-            @pointercancel="endSuggestionDrag"
-            @pointerleave="endSuggestionDrag"
+        <div
+          v-if="attachments.length"
+          class="attachment-row"
+        >
+          <button
+            v-for="(file, index) in attachments"
+            :key="`${file.name}-${index}`"
+            type="button"
+            :aria-label="`移除附件 ${file.name}`"
+            @click="removeAttachment(index)"
           >
-            <button
-              v-for="item in suggestions"
-              :key="item"
-              type="button"
-              :class="{ active: activeTask === item }"
-              :aria-pressed="activeTask === item"
-              @click="selectSuggestion(item)"
-            >
-              {{ item }}
-            </button>
-          </div>
+            <PaperClipOutlined />
+            <span>{{ file.name }}</span>
+            <em>{{ formatFileSize(file.size) }}</em>
+          </button>
+        </div>
 
-          <div v-if="attachments.length" class="attachment-row">
-            <button
-              v-for="(file, index) in attachments"
-              :key="`${file.name}-${index}`"
-              type="button"
-              :aria-label="`移除附件 ${file.name}`"
-              @click="removeAttachment(index)"
-            >
-              <PaperClipOutlined />
-              <span>{{ file.name }}</span>
-              <em>{{ formatFileSize(file.size) }}</em>
-            </button>
-          </div>
+        <form
+          class="q-input"
+          @submit.prevent="sendMessage()"
+        >
+          <button
+            type="button"
+            aria-label="语音"
+            @click="handleVoiceInput"
+          >
+            <AudioOutlined />
+          </button>
 
-          <form class="q-input" @submit.prevent="sendMessage()">
-            <button type="button" aria-label="语音" @click="handleVoiceInput">
-              <AudioOutlined />
-            </button>
-            <input
-              v-model="message"
-              name="assistant_message"
-              autocomplete="off"
-              aria-label="输入健康助手问题"
-              :placeholder="inputPlaceholder"
-            />
-            <button type="button" aria-label="添加文件" @click="openFilePicker">
-              <PaperClipOutlined />
-            </button>
-            <button type="button" aria-label="拍照" @click="handleCameraUpload">
-              <CameraOutlined />
-            </button>
-            <button v-if="message.trim() || attachments.length" class="send" type="submit" aria-label="发送消息" :disabled="sending">
-              <SendOutlined />
-            </button>
-          </form>
           <input
-            ref="fileInput"
-            class="file-input"
-            type="file"
-            aria-label="上传健康助手附件"
-            multiple
-            :accept="fileAccept"
-            @change="handleFileChange"
-          />
-          <p>内容由 AI 生成</p>
-        </footer>
+            v-model="message"
+            name="assistant_message"
+            autocomplete="off"
+            aria-label="输入健康助手问题"
+            :placeholder="inputPlaceholder"
+          >
 
-        <transition name="toast">
-          <div v-if="toastText" class="app-toast" role="status" aria-live="polite">{{ toastText }}</div>
-        </transition>
-      </template>
+          <button
+            type="button"
+            aria-label="添加文件"
+            @click="openFilePicker"
+          >
+            <PaperClipOutlined />
+          </button>
 
-      <transition name="history">
-        <section v-if="showHistory" class="history-mask" @click.self="showHistory = false">
-          <div class="history-panel">
-            <header>
+          <button
+            type="button"
+            aria-label="拍照"
+            @click="handleCameraUpload"
+          >
+            <CameraOutlined />
+          </button>
+
+          <button
+            v-if="message.trim() || attachments.length"
+            class="send"
+            type="submit"
+            aria-label="发送消息"
+            :disabled="sending"
+          >
+            <SendOutlined />
+          </button>
+        </form>
+
+        <input
+          ref="fileInput"
+          class="file-input"
+          type="file"
+          aria-label="上传健康助手附件"
+          multiple
+          :accept="fileAccept"
+          @change="handleFileChange"
+        >
+
+        <p class="ai-generated-note">内容由 AI 生成</p>
+      </footer>
+
+      <transition name="sidebar">
+        <section
+          v-if="showHistory"
+          class="sidebar-overlay"
+          @click.self="showHistory = false"
+        >
+          <aside class="sidebar-panel">
+            <header class="sidebar-header">
               <strong>最近对话</strong>
-              <button type="button" @click="newConversation">
-                <PlusOutlined />
-                新建
+
+              <button
+                type="button"
+                aria-label="关闭最近对话"
+                @click="showHistory = false"
+              >
+                <CloseOutlined />
               </button>
             </header>
 
-            <div v-if="conversationHistory.length" class="history-list">
+            <button
+              class="sidebar-new"
+              type="button"
+              @click="newConversation"
+            >
+              <PlusOutlined />
+              新建对话
+            </button>
+
+            <div
+              v-if="conversationHistory.length"
+              class="sidebar-list"
+            >
               <button
                 v-for="item in conversationHistory"
                 :key="item.id"
@@ -607,26 +694,55 @@ onMounted(refreshHistory)
                 :class="{ active: item.id === activeHistoryKey }"
                 @click="loadConversation(item)"
               >
-                <span>
-                  <strong>{{ item.title }}</strong>
-                  <small>{{ item.task || '健康助手' }}</small>
+                <span class="sidebar-item-icon">
+                  <RobotOutlined />
                 </span>
-                <em>{{ formatHistoryTime(item.updatedAt) }}</em>
+
+                <span class="sidebar-item-copy">
+                  <strong>{{ item.title }}</strong>
+
+                  <small>
+                    {{ item.task || '健康助手' }}
+                    ·
+                    {{ formatHistoryTime(item.updatedAt) }}
+                  </small>
+                </span>
               </button>
             </div>
-            <p v-else>{{ loadingHistory ? '正在读取历史对话' : '还没有历史对话' }}</p>
-          </div>
+
+            <p
+              v-else
+              class="sidebar-empty"
+            >
+              {{ loadingHistory ? '正在读取历史对话…' : '还没有历史对话' }}
+            </p>
+          </aside>
         </section>
       </transition>
 
-      <LiquidTabBar active-key="assistant" @change="handleTabChange" />
+      <transition name="toast">
+        <div
+          v-if="toastText"
+          class="app-toast"
+          role="status"
+          aria-live="polite"
+        >
+          {{ toastText }}
+        </div>
+      </transition>
+
+      <LiquidTabBar
+        active-key="assistant"
+        @change="handleTabChange"
+      />
     </section>
   </main>
 </template>
 
 <style scoped>
-.chat-page {
+.assistant-shell {
   display: flex;
+  width: 100%;
   min-height: 100vh;
   min-height: 100dvh;
   justify-content: center;
@@ -634,157 +750,17 @@ onMounted(refreshHistory)
   background: #dbe8f7;
 }
 
-.chat-phone {
+.assistant-phone {
   position: relative;
   display: flex;
   width: 100%;
   max-width: 430px;
-  margin: 0 auto;
   height: 100vh;
   height: 100dvh;
   flex-direction: column;
   overflow: hidden;
   background: #ffffff;
-}
-
-.guide-header {
-  display: flex;
-  height: 52px;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  border-bottom: 1px solid #edf1f5;
-  background: #ffffff;
-}
-
-.guide-header h1 {
-  margin: 0;
-  color: #101936;
-  font-size: 18px;
-  font-weight: 900;
-}
-
-.guide-header button {
-  position: absolute;
-  right: 14px;
-  display: grid;
-  width: 36px;
-  height: 36px;
-  place-items: center;
-  border-radius: 12px;
-  color: #1677ff;
-  background: #eef5ff;
-  font-size: 18px;
-}
-
-.guide-scroll {
-  min-height: 0;
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px 16px 18px;
-  background: linear-gradient(180deg, #f6faf8 0%, #f1f7f3 72%, #f8fbf9 100%);
-  scrollbar-width: none;
-}
-
-.guide-scroll::-webkit-scrollbar {
-  display: none;
-}
-
-.assistant-hero {
-  display: grid;
-  justify-items: center;
-  border-radius: 20px;
-  padding: 36px 24px 32px;
-  color: #ffffff;
-  background:
-    radial-gradient(circle at 82% 18%, rgba(255, 255, 255, 0.18) 0 58px, transparent 59px),
-    radial-gradient(circle at 14% 74%, rgba(255, 255, 255, 0.12) 0 44px, transparent 45px),
-    linear-gradient(145deg, #16a34a 0%, #0e8a5c 42%, #0b6e4a 100%);
-  box-shadow: 0 14px 28px rgba(16, 122, 60, 0.16);
-  text-align: center;
-}
-
-.hero-icon {
-  display: grid;
-  width: 64px;
-  height: 64px;
-  place-items: center;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.18);
-  font-size: 30px;
-}
-
-.assistant-hero h2 {
-  margin: 16px 0 0;
-  font-size: 22px;
-  font-weight: 900;
-  letter-spacing: -0.3px;
-}
-
-.assistant-hero p {
-  max-width: 280px;
-  margin: 10px 0 0;
-  color: rgba(255, 255, 255, 0.88);
-  font-size: 13px;
-  font-weight: 750;
-  line-height: 1.6;
-}
-
-.quick-panel {
-  display: grid;
-  gap: 10px;
-  margin-top: 14px;
-}
-
-.quick-action {
-  display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
-  gap: 11px;
-  align-items: center;
-  border-radius: 8px;
-  padding: 12px;
-  color: #162033;
-  background: #ffffff;
-  box-shadow: 0 8px 18px rgba(35, 75, 130, 0.06);
-  text-align: left;
-}
-
-.quick-action.primary {
-  color: #ffffff;
-  background:
-    radial-gradient(circle at 88% 20%, rgba(255,255,255,0.24) 0 42px, transparent 43px),
-    linear-gradient(135deg, #3157ff, #15a1ff);
-  box-shadow: 0 12px 24px rgba(49, 87, 255, 0.22);
-}
-
-.quick-action > span {
-  min-width: 0;
-}
-
-.quick-action svg {
-  font-size: 24px;
-}
-
-.quick-action strong,
-.quick-action small {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.quick-action strong {
-  font-size: 15px;
-  font-weight: 900;
-}
-
-.quick-action small {
-  margin-top: 4px;
-  color: inherit;
-  opacity: 0.72;
-  font-size: 11px;
-  font-weight: 800;
+  box-shadow: 0 0 36px rgba(47, 87, 144, 0.1);
 }
 
 .q-header {
@@ -794,6 +770,7 @@ onMounted(refreshHistory)
   grid-template-columns: 42px 1fr 42px;
   align-items: center;
   padding: 8px 16px 0;
+  background: #ffffff;
 }
 
 .q-header h1 {
@@ -805,7 +782,6 @@ onMounted(refreshHistory)
 }
 
 .q-header button {
-  position: relative;
   display: grid;
   width: 36px;
   height: 36px;
@@ -821,6 +797,7 @@ onMounted(refreshHistory)
   flex: 1;
   overflow-y: auto;
   padding: 22px 20px 18px;
+  background: #ffffff;
   scrollbar-width: none;
 }
 
@@ -875,13 +852,24 @@ onMounted(refreshHistory)
 .q-message p {
   margin: 0;
   border-radius: 19px;
-  padding: 15px 15px;
+  padding: 15px;
   color: #22252a;
   background: #f1f1f2;
   font-size: 15px;
   font-weight: 800;
   line-height: 1.55;
   white-space: pre-wrap;
+}
+
+.q-message.user {
+  justify-self: end;
+}
+
+.q-message.user p {
+  max-width: 300px;
+  color: #ffffff;
+  background: #1677ff;
+  font-size: 14px;
 }
 
 .message-files {
@@ -906,17 +894,6 @@ onMounted(refreshHistory)
   white-space: nowrap;
 }
 
-.q-message.user {
-  justify-self: end;
-}
-
-.q-message.user p {
-  max-width: 300px;
-  color: #ffffff;
-  background: #1677ff;
-  font-size: 14px;
-}
-
 .message-actions {
   display: flex;
   gap: 16px;
@@ -932,55 +909,51 @@ onMounted(refreshHistory)
 
 .q-input-area {
   flex: 0 0 auto;
-  padding: 10px 14px 12px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0), #ffffff 22%);
+  padding: 8px 14px 3px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0),
+    #ffffff 22%
+  );
 }
 
 .suggestion-row {
-  display: flex;
-  gap: 9px;
-  overflow-x: auto;
-  margin: 0 -14px;
-  padding: 0 14px 14px;
-  mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
-  overscroll-behavior-x: contain;
-  scroll-padding: 14px;
-  scroll-snap-type: x proximity;
-  scrollbar-width: none;
-  touch-action: pan-x;
-  -webkit-overflow-scrolling: touch;
-  cursor: grab;
-  user-select: none;
-}
-
-.suggestion-row:active {
-  cursor: grabbing;
-}
-
-.suggestion-row::-webkit-scrollbar {
-  display: none;
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 0 0 10px;
 }
 
 .suggestion-row button {
-  flex: 0 0 auto;
-  min-width: max-content;
+  min-width: 0;
   border: 1px solid #e5e5e7;
   border-radius: 14px;
-  padding: 9px 13px;
+  padding: 10px 2px;
   color: #22252a;
   background: #ffffff;
   box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
-  font-size: 13px;
+  cursor: pointer;
+  font-size: 12px;
   font-weight: 900;
-  scroll-snap-align: start;
-  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.18s ease;
+  line-height: 1.2;
+  white-space: nowrap;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.suggestion-row button:active {
+  transform: scale(0.96);
 }
 
 .suggestion-row button.active {
-  border-color: rgba(22, 119, 255, 0.28);
+  border-color: rgba(22, 119, 255, 0.35);
   color: #1677ff;
   background: #eef5ff;
-  transform: translateY(-1px);
   box-shadow: 0 7px 16px rgba(22, 119, 255, 0.12);
 }
 
@@ -988,7 +961,7 @@ onMounted(refreshHistory)
   display: flex;
   gap: 8px;
   overflow-x: auto;
-  padding: 0 0 10px;
+  padding: 0 0 8px;
   scrollbar-width: none;
 }
 
@@ -1039,6 +1012,7 @@ onMounted(refreshHistory)
   flex: 1;
   border: 0;
   color: #17191d;
+  background: transparent;
   font-size: 14px;
   font-weight: 800;
 }
@@ -1065,11 +1039,18 @@ onMounted(refreshHistory)
   font-size: 15px;
 }
 
-.q-input-area p {
-  margin: 7px 0 0;
+.q-input .send:disabled {
+  opacity: 0.55;
+}
+
+.ai-generated-note {
+  display: table;
+  width: auto;
+  margin: 3px auto 0;
   color: #c6c7cb;
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 800;
+  line-height: 10px;
   text-align: center;
 }
 
@@ -1077,201 +1058,65 @@ onMounted(refreshHistory)
   display: none;
 }
 
-.history-mask {
-  position: absolute;
-  z-index: 90;
-  inset: 0;
-  display: flex;
-  align-items: flex-end;
-  background: rgba(15, 23, 42, 0.32);
-}
-
-.history-panel {
-  width: 100%;
-  max-height: min(560px, 78vh);
-  overflow: hidden;
-  border-radius: 20px 20px 0 0;
-  padding: 18px 16px calc(24px + env(safe-area-inset-bottom));
-  background: #ffffff;
-  box-shadow: 0 -18px 38px rgba(15, 23, 42, 0.16);
-}
-
-.history-panel header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.history-panel header strong {
-  color: #17243a;
-  font-size: 17px;
-  font-weight: 900;
-}
-
-.history-panel header button {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  border-radius: 999px;
-  padding: 8px 11px;
-  color: #ffffff;
-  background: #1677ff;
-  font-size: 12px;
-  font-weight: 900;
-}
-
-.history-list {
-  display: grid;
-  max-height: 430px;
-  overflow-y: auto;
-  gap: 8px;
-  margin-top: 14px;
-  scrollbar-width: none;
-}
-
-.history-list::-webkit-scrollbar {
-  display: none;
-}
-
-.history-list button {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
-  border: 1px solid #edf1f5;
-  border-radius: 8px;
-  padding: 12px;
-  background: #f8fbff;
-  text-align: left;
-}
-
-.history-list button.active {
-  border-color: rgba(22, 119, 255, 0.34);
-  background: #eef5ff;
-}
-
-.history-list span {
-  min-width: 0;
-}
-
-.history-list strong,
-.history-list small {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.history-list strong {
-  color: #17243a;
-  font-size: 13px;
-  font-weight: 900;
-}
-
-.history-list small {
-  margin-top: 5px;
-  color: #8a97a8;
-  font-size: 11px;
-  font-weight: 800;
-}
-
-.history-list em {
-  color: #9aa5b5;
-  font-size: 11px;
-  font-style: normal;
-  font-weight: 900;
-}
-
-.history-panel > p {
-  margin: 28px 0 10px;
-  color: #98a0ab;
-  font-size: 13px;
-  font-weight: 800;
-  text-align: center;
-}
-
-.history-enter-active,
-.history-leave-active {
-  transition: opacity 0.2s ease;
-}
-
-.history-enter-active .history-panel,
-.history-leave-active .history-panel {
-  transition: transform 0.22s ease;
-}
-
-.history-enter-from,
-.history-leave-to {
-  opacity: 0;
-}
-
-.history-enter-from .history-panel,
-.history-leave-to .history-panel {
-  transform: translateY(100%);
-}
-
 .sidebar-overlay {
   position: absolute;
-  z-index: 80;
+  z-index: 100;
   inset: 0;
-  background: rgba(15, 23, 42, 0.24);
+  background: rgba(15, 23, 42, 0.3);
 }
 
 .sidebar-panel {
   position: absolute;
   top: 0;
-  left: 0;
   bottom: 0;
-  width: min(300px, 82vw);
+  left: 0;
   display: flex;
+  width: min(306px, 82vw);
   flex-direction: column;
   overflow: hidden;
-  padding: 18px 18px 24px;
+  padding: 18px 16px calc(22px + env(safe-area-inset-bottom));
   background: #ffffff;
-  box-shadow: 2px 0 32px rgba(15, 23, 42, 0.14);
+  box-shadow: 4px 0 32px rgba(15, 23, 42, 0.16);
 }
 
-.sidebar-panel header {
+.sidebar-header {
   display: flex;
-  flex: 0 0 auto;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 14px;
 }
 
-.sidebar-panel header strong {
+.sidebar-header strong {
   color: #17243a;
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 900;
 }
 
-.sidebar-panel header button {
+.sidebar-header button {
   display: grid;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   place-items: center;
   border-radius: 10px;
   color: #6f7b8c;
-  background: #f3f4f6;
+  background: #f2f5f8;
   font-size: 16px;
 }
 
 .sidebar-new {
   display: flex;
   width: 100%;
-  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 7px;
+  margin-top: 18px;
   border-radius: 14px;
-  padding: 11px 0;
+  padding: 12px 0;
   color: #ffffff;
-  background: linear-gradient(135deg, #16a34a, #0d9488);
+  background: linear-gradient(135deg, #1677ff, #00a870);
+  box-shadow: 0 10px 20px rgba(22, 119, 255, 0.2);
   cursor: pointer;
   font-size: 14px;
   font-weight: 900;
-  box-shadow: 0 8px 18px rgba(16, 122, 60, 0.18);
 }
 
 .sidebar-list {
@@ -1287,38 +1132,70 @@ onMounted(refreshHistory)
 }
 
 .sidebar-list button {
-  display: block;
+  display: flex;
   width: 100%;
-  border-bottom: 1px solid #f1f3f5;
-  padding: 14px 0 12px;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid #eef1f5;
+  padding: 14px 4px;
   background: transparent;
   cursor: pointer;
   text-align: left;
 }
 
-.sidebar-list strong,
-.sidebar-list small {
+.sidebar-list button.active {
+  border-radius: 12px;
+  border-bottom-color: transparent;
+  padding-right: 8px;
+  padding-left: 8px;
+  background: #eef5ff;
+}
+
+.sidebar-item-icon {
+  display: grid;
+  width: 31px;
+  height: 31px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 9px;
+  color: #1677ff;
+  background: #edf5ff;
+  font-size: 16px;
+}
+
+.sidebar-list button.active .sidebar-item-icon {
+  color: #ffffff;
+  background: #1677ff;
+}
+
+.sidebar-item-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.sidebar-item-copy strong,
+.sidebar-item-copy small {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.sidebar-list strong {
+.sidebar-item-copy strong {
   color: #17243a;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 900;
 }
 
-.sidebar-list small {
+.sidebar-item-copy small {
   margin-top: 5px;
   color: #98a0ab;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
 }
 
 .sidebar-empty {
-  margin-top: 24px;
+  margin: 42px 0 0;
   color: #98a0ab;
   font-size: 13px;
   font-weight: 800;
@@ -1343,5 +1220,74 @@ onMounted(refreshHistory)
 .sidebar-enter-from .sidebar-panel,
 .sidebar-leave-to .sidebar-panel {
   transform: translateX(-100%);
+}
+
+.app-toast {
+  position: absolute;
+  z-index: 120;
+  right: 50%;
+  bottom: calc(78px + env(safe-area-inset-bottom));
+  max-width: calc(100% - 48px);
+  border-radius: 999px;
+  padding: 10px 15px;
+  color: #ffffff;
+  background: rgba(19, 37, 66, 0.92);
+  box-shadow: 0 10px 24px rgba(20, 36, 65, 0.16);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.35;
+  transform: translateX(50%);
+}
+
+.toast-enter-active,
+.toast-leave-active {
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translate(50%, 10px);
+}
+
+@media (max-width: 430px) {
+  .assistant-phone {
+    max-width: none;
+    box-shadow: none;
+  }
+}
+
+@media (max-width: 360px) {
+  .q-scroll {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  .q-input-area {
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .suggestion-row {
+    gap: 6px;
+  }
+
+  .suggestion-row button {
+    font-size: 11px;
+  }
+
+  .assistant-brand strong {
+    font-size: 16px;
+  }
+
+  .assistant-brand small {
+    font-size: 10px;
+  }
+
+  .sidebar-panel {
+    width: min(286px, 84vw);
+  }
 }
 </style>

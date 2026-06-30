@@ -2,7 +2,32 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { loginByPassword, registerByPassword } from '../../api/auth'
-import { ApiRequestError } from '../../api/request'
+import { ApiRequestError, saveAuthSession } from '../../api/request'
+
+const TEST_ACCOUNT = 'test'
+const TEST_PASSWORD = '123456'
+
+function isTestAccount(account, password) {
+  return (
+    String(account || '').trim() === TEST_ACCOUNT &&
+    String(password || '') === TEST_PASSWORD
+  )
+}
+
+function createTestSession() {
+  return {
+    token: 'local-test-account-token',
+    user: {
+      id: 'local-test-user',
+      username: TEST_ACCOUNT,
+      nickname: '测试用户',
+      role: 'user',
+      avatar: '',
+      phone: '',
+      email: '',
+    },
+  }
+}
 
 const router = useRouter()
 const route = useRoute()
@@ -124,6 +149,11 @@ async function handleSubmit() {
       })
 
       showNotice('账户创建成功，正在进入健康空间。')
+    } else if (isTestAccount(account.value, password.value)) {
+      session = createTestSession()
+      saveAuthSession(session)
+
+      showNotice('测试账号登录成功，正在进入健康空间。')
     } else {
       session = await loginByPassword(
         account.value.trim(),
@@ -232,6 +262,11 @@ onBeforeUnmount(() => {
             </svg>
             <i></i>
           </div>
+
+          <p v-if="!isRegister" class="test-account-tip">
+            测试账号：<b>test</b>
+            <span>密码：<b>123456</b></span>
+          </p>
         </div>
 
         <form class="login-form" @submit.prevent="handleSubmit">
@@ -699,6 +734,38 @@ onBeforeUnmount(() => {
 .register-mode .health-trace {
   height: 23px;
   margin-top: 12px;
+}
+
+.test-account-tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 0;
+  color: #8a9ab2;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.test-account-tip span {
+  position: relative;
+  padding-left: 9px;
+}
+
+.test-account-tip span::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #65a9df;
+  content: "";
+  transform: translateY(-50%);
+}
+
+.test-account-tip b {
+  color: #2c6fd8;
+  font-weight: 800;
 }
 
 .health-trace svg {

@@ -19,6 +19,7 @@ import { apiGet, apiPost, getStoredUser, hasAuthSession } from '../../api/reques
 
 const router = useRouter()
 const route = useRoute()
+
 const keyword = ref('')
 const activeCategory = ref('推荐')
 const articles = ref([])
@@ -31,9 +32,22 @@ const comments = ref([])
 const loadingDetail = ref(false)
 const submittingComment = ref(false)
 
-const categories = ['热点', '推荐', '饮食', '运动', '筛查', '管理', '血糖', '复查', '并发症', '指南', '直播']
+const categories = [
+  '推荐',
+  '饮食',
+  '运动',
+  '筛查',
+  '管理',
+  '血糖',
+  '复查',
+  '并发症',
+  '指南',
+  '直播',
+]
 
-const isFavoritesMode = computed(() => route.query.favorites === '1')
+const isFavoritesMode = computed(() => {
+  return route.query.favorites === '1'
+})
 
 const visibleArticles = computed(() => {
   const text = keyword.value.trim()
@@ -43,20 +57,26 @@ const visibleArticles = computed(() => {
       return false
     }
 
-    const categoryMatch = activeCategory.value === '推荐' || activeCategory.value === '热点'
+    const categoryMatch = activeCategory.value === '推荐'
       ? true
       : item.category?.includes(activeCategory.value)
-    const keywordMatch = !text || `${item.title}${item.summary}${item.author}`.includes(text)
+
+    const keywordMatch = !text
+      || `${item.title}${item.summary}${item.author}`.includes(text)
 
     return categoryMatch && keywordMatch
   })
 })
 
 const articleParagraphs = computed(() => {
-  if (!selectedArticle.value) return []
+  if (!selectedArticle.value) {
+    return []
+  }
 
   return [
-    selectedArticle.value.content || selectedArticle.value.detail || selectedArticle.value.summary,
+    selectedArticle.value.content
+      || selectedArticle.value.detail
+      || selectedArticle.value.summary,
     '这篇内容仅用于健康管理参考。若出现持续异常血糖、明显不适或用药相关问题，请及时咨询医生。',
   ].filter(Boolean)
 })
@@ -71,13 +91,19 @@ const commentPlaceholder = computed(() => {
 
 const hasUserCommented = computed(() => {
   const currentUser = getStoredUser()
-  if (!currentUser) return false
 
-  return comments.value.some((item) => item.user === (currentUser.nickname || currentUser.username))
+  if (!currentUser) {
+    return false
+  }
+
+  return comments.value.some((item) => {
+    return item.user === (currentUser.nickname || currentUser.username)
+  })
 })
 
 function showToast(text) {
   toastText.value = text
+
   window.setTimeout(() => {
     toastText.value = ''
   }, 2200)
@@ -98,9 +124,15 @@ function normalizeArticle(item) {
 
 function applyRouteArticle() {
   const targetId = String(route.query.article || '')
-  if (!targetId) return
 
-  const matched = articles.value.find((item) => String(item.id) === targetId)
+  if (!targetId) {
+    return
+  }
+
+  const matched = articles.value.find((item) => {
+    return String(item.id) === targetId
+  })
+
   if (matched) {
     openArticle(matched)
   }
@@ -111,8 +143,14 @@ async function loadArticles() {
     const path = isFavoritesMode.value
       ? '/api/articles/favorites?page=1&pageSize=50'
       : '/api/articles?page=1&pageSize=50'
+
     const response = await apiGet(path)
-    const source = response.data?.items || response.data?.list || response.data?.articles || []
+
+    const source = response.data?.items
+      || response.data?.list
+      || response.data?.articles
+      || []
+
     articles.value = source.map(normalizeArticle)
   } catch {
     articles.value = []
@@ -133,12 +171,15 @@ async function openArticle(article) {
 
   try {
     const response = await apiGet(`/api/articles/${article.id}`)
+
     selectedArticle.value = normalizeArticle({
       ...article,
       ...(response.data || {}),
       detail: response.data?.content || response.data?.summary || article.summary,
     })
+
     await loadComments(article.id)
+
     router.replace({
       name: 'news',
       query: {
@@ -157,7 +198,10 @@ function closeArticle() {
   commentDraft.value = ''
   replyTarget.value = null
   comments.value = []
-  router.replace({ name: 'news' })
+
+  router.replace({
+    name: 'news',
+  })
 }
 
 async function toggleFavorite(article) {
@@ -167,19 +211,34 @@ async function toggleFavorite(article) {
   }
 
   try {
-    const result = await apiPost(`/api/articles/${article.id}/favorite`, {})
+    const result = await apiPost(
+      `/api/articles/${article.id}/favorite`,
+      {},
+    )
+
     const favorited = Boolean(result.data?.favorited)
     const delta = favorited ? 1 : -1
 
-    articles.value = articles.value.map((item) => item.id === article.id
-      ? { ...item, favorited, saves: Math.max(0, Number(item.saves || 0) + delta) }
-      : item)
+    articles.value = articles.value.map((item) => {
+      if (item.id !== article.id) {
+        return item
+      }
+
+      return {
+        ...item,
+        favorited,
+        saves: Math.max(0, Number(item.saves || 0) + delta),
+      }
+    })
 
     if (selectedArticle.value?.id === article.id) {
       selectedArticle.value = {
         ...selectedArticle.value,
         favorited,
-        saves: Math.max(0, Number(selectedArticle.value.saves || 0) + delta),
+        saves: Math.max(
+          0,
+          Number(selectedArticle.value.saves || 0) + delta,
+        ),
       }
     }
 
@@ -200,19 +259,34 @@ async function toggleLike(article) {
   }
 
   try {
-    const result = await apiPost(`/api/articles/${article.id}/like`, {})
+    const result = await apiPost(
+      `/api/articles/${article.id}/like`,
+      {},
+    )
+
     const liked = Boolean(result.data?.liked)
     const delta = liked ? 1 : -1
 
-    articles.value = articles.value.map((item) => item.id === article.id
-      ? { ...item, liked, likes: Math.max(0, Number(item.likes || 0) + delta) }
-      : item)
+    articles.value = articles.value.map((item) => {
+      if (item.id !== article.id) {
+        return item
+      }
+
+      return {
+        ...item,
+        liked,
+        likes: Math.max(0, Number(item.likes || 0) + delta),
+      }
+    })
 
     if (selectedArticle.value?.id === article.id) {
       selectedArticle.value = {
         ...selectedArticle.value,
         liked,
-        likes: Math.max(0, Number(selectedArticle.value.likes || 0) + delta),
+        likes: Math.max(
+          0,
+          Number(selectedArticle.value.likes || 0) + delta,
+        ),
       }
     }
   } catch (error) {
@@ -234,13 +308,23 @@ async function submitComment() {
   }
 
   submittingComment.value = true
+
   try {
-    const response = await apiPost(`/api/articles/${selectedArticle.value.id}/comments`, {
-      content: text,
-      parent_id: replyTarget.value?.id || null,
-    })
-    comments.value = [...comments.value, response.data]
+    const response = await apiPost(
+      `/api/articles/${selectedArticle.value.id}/comments`,
+      {
+        content: text,
+        parent_id: replyTarget.value?.id || null,
+      },
+    )
+
+    comments.value = [
+      ...comments.value,
+      response.data,
+    ]
+
     showToast(replyTarget.value ? '回复已发布。' : '评论已发布。')
+
     commentDraft.value = ''
     replyTarget.value = null
   } catch (error) {
@@ -257,13 +341,28 @@ async function toggleCommentLike(comment) {
   }
 
   try {
-    const result = await apiPost(`/api/articles/${selectedArticle.value.id}/comments/${comment.id}/like`, {})
+    const result = await apiPost(
+      `/api/articles/${selectedArticle.value.id}/comments/${comment.id}/like`,
+      {},
+    )
+
     const liked = Boolean(result.data?.liked)
     const delta = liked ? 1 : -1
 
-    comments.value = comments.value.map((item) => item.id === comment.id
-      ? { ...item, liked, like_count: Math.max(0, Number(item.like_count || 0) + delta) }
-      : item)
+    comments.value = comments.value.map((item) => {
+      if (item.id !== comment.id) {
+        return item
+      }
+
+      return {
+        ...item,
+        liked,
+        like_count: Math.max(
+          0,
+          Number(item.like_count || 0) + delta,
+        ),
+      }
+    })
   } catch (error) {
     showToast(error.message || '评论点赞失败。')
   }
@@ -286,11 +385,15 @@ function scrollToComments() {
 }
 
 function handleTabChange(key) {
-  router.push({ name: key })
+  router.push({
+    name: key,
+  })
 }
 
 function clearFavoritesMode() {
-  router.replace({ name: 'news' })
+  router.replace({
+    name: 'news',
+  })
 }
 
 onMounted(async () => {
@@ -308,10 +411,16 @@ onMounted(async () => {
             <span>{{ isFavoritesMode ? '个人收藏' : '健康内容' }}</span>
             <h1>{{ isFavoritesMode ? '我的收藏' : '资讯' }}</h1>
           </div>
+
           <TopUserActions />
         </header>
 
-        <button v-if="isFavoritesMode" class="favorites-back" type="button" @click="clearFavoritesMode">
+        <button
+          v-if="isFavoritesMode"
+          class="favorites-back"
+          type="button"
+          @click="clearFavoritesMode"
+        >
           <LeftOutlined />
           返回全部资讯
         </button>
@@ -319,6 +428,7 @@ onMounted(async () => {
         <section class="feed-search">
           <label>
             <SearchOutlined />
+
             <input
               v-model="keyword"
               name="news_search"
@@ -362,7 +472,10 @@ onMounted(async () => {
             @keydown.space.prevent="openArticle(article)"
           >
             <div class="article-meta">
-              <span class="author-avatar">{{ String(article.author || '健').slice(0, 1) }}</span>
+              <span class="author-avatar">
+                {{ String(article.author || '健').slice(0, 1) }}
+              </span>
+
               <strong>{{ article.author }}</strong>
               <em>{{ article.badge }}</em>
               <small>{{ article.category }}</small>
@@ -372,9 +485,21 @@ onMounted(async () => {
             <p>{{ article.summary }}</p>
 
             <footer>
-              <span><EyeOutlined /> {{ article.views }}</span>
-              <span><LikeOutlined /> {{ article.likes }}</span>
-              <span><StarOutlined /> {{ article.saves }}</span>
+              <span>
+                <EyeOutlined />
+                {{ article.views }}
+              </span>
+
+              <span>
+                <LikeOutlined />
+                {{ article.likes }}
+              </span>
+
+              <span>
+                <StarOutlined />
+                {{ article.saves }}
+              </span>
+
               <button
                 type="button"
                 :aria-label="article.favorited ? '取消收藏' : '收藏文章'"
@@ -388,21 +513,37 @@ onMounted(async () => {
 
           <div v-if="visibleArticles.length === 0" class="empty-feed">
             <StarOutlined />
-            <strong>{{ isFavoritesMode ? '还没有收藏内容' : '暂时没有匹配内容' }}</strong>
-            <small>{{ isFavoritesMode ? '遇到值得复查的内容，点收藏后会出现在这里。' : '换个关键词或分类再看看。' }}</small>
+
+            <strong>
+              {{ isFavoritesMode ? '还没有收藏内容' : '暂时没有匹配内容' }}
+            </strong>
+
+            <small>
+              {{
+                isFavoritesMode
+                  ? '遇到值得复查的内容，点收藏后会出现在这里。'
+                  : '换个关键词或分类再看看。'
+              }}
+            </small>
           </div>
         </section>
       </div>
 
       <article v-else class="article-detail-page">
         <header class="detail-nav">
-          <button type="button" aria-label="返回资讯列表" @click="closeArticle">
+          <button
+            type="button"
+            aria-label="返回资讯列表"
+            @click="closeArticle"
+          >
             <LeftOutlined />
           </button>
+
           <div>
             <span>{{ selectedArticle.author }}</span>
             <small>{{ selectedArticle.badge }}</small>
           </div>
+
           <span class="nav-spacer"></span>
         </header>
 
@@ -411,25 +552,37 @@ onMounted(async () => {
             <strong>正在加载文章详情</strong>
             <small>请稍候。</small>
           </div>
+
           <h1>{{ selectedArticle.title }}</h1>
 
           <section class="detail-author">
-            <span class="detail-avatar">{{ String(selectedArticle.author || '健').slice(0, 1) }}</span>
+            <span class="detail-avatar">
+              {{ String(selectedArticle.author || '健').slice(0, 1) }}
+            </span>
+
             <div>
               <strong>{{ selectedArticle.author }}</strong>
-              <small>{{ selectedArticle.badge }} · {{ selectedArticle.category }}</small>
+              <small>
+                {{ selectedArticle.badge }} · {{ selectedArticle.category }}
+              </small>
             </div>
           </section>
 
           <p class="detail-stats">
-            {{ selectedArticle.likes || 0 }} 人点赞 · {{ selectedArticle.views || 0 }} 人阅读
+            {{ selectedArticle.likes || 0 }} 人点赞 ·
+            {{ selectedArticle.views || 0 }} 人阅读
           </p>
 
           <section class="detail-body">
             <h2>{{ selectedArticle.title }}</h2>
-            <p v-for="paragraph in articleParagraphs" :key="paragraph">
+
+            <p
+              v-for="paragraph in articleParagraphs"
+              :key="paragraph"
+            >
               {{ paragraph }}
             </p>
+
             <div class="detail-note">
               本内容仅用于健康管理参考，不替代医生诊断、处方或线下治疗建议。
             </div>
@@ -437,7 +590,11 @@ onMounted(async () => {
 
           <section ref="commentBlockRef" class="comment-block">
             <h2>评论 {{ comments.length }}</h2>
-            <form class="comment-input" @submit.prevent="submitComment">
+
+            <form
+              class="comment-input"
+              @submit.prevent="submitComment"
+            >
               <input
                 v-model="commentDraft"
                 name="article_comment"
@@ -445,14 +602,28 @@ onMounted(async () => {
                 aria-label="输入评论"
                 :placeholder="commentPlaceholder"
               />
-              <button type="submit" :disabled="submittingComment">发送</button>
+
+              <button
+                type="submit"
+                :disabled="submittingComment"
+              >
+                发送
+              </button>
             </form>
 
-            <article v-for="comment in comments" :key="comment.id" class="comment-row">
-              <span class="comment-avatar">{{ comment.user.slice(0, 1) }}</span>
+            <article
+              v-for="comment in comments"
+              :key="comment.id"
+              class="comment-row"
+            >
+              <span class="comment-avatar">
+                {{ comment.user.slice(0, 1) }}
+              </span>
+
               <div>
                 <header>
                   <strong>{{ comment.user }}</strong>
+
                   <button
                     :aria-label="comment.liked ? '取消点赞评论' : '点赞评论'"
                     type="button"
@@ -464,14 +635,31 @@ onMounted(async () => {
                     {{ getCommentLikes(comment) }}
                   </button>
                 </header>
-                <small v-if="comment.parent_id" class="reply-label">回复上级评论</small>
+
+                <small
+                  v-if="comment.parent_id"
+                  class="reply-label"
+                >
+                  回复上级评论
+                </small>
+
                 <p>{{ comment.content }}</p>
+
                 <small class="comment-actions">
-                  <button type="button" @click="replyToComment(comment)">回复</button>
-                  <span>{{ new Date(comment.created_at).toLocaleString('zh-CN') }}</span>
+                  <button
+                    type="button"
+                    @click="replyToComment(comment)"
+                  >
+                    回复
+                  </button>
+
+                  <span>
+                    {{ new Date(comment.created_at).toLocaleString('zh-CN') }}
+                  </span>
                 </small>
               </div>
             </article>
+
             <div v-if="comments.length === 0" class="empty-feed">
               <strong>还没有评论</strong>
               <small>第一条评论会直接写入数据库。</small>
@@ -490,6 +678,7 @@ onMounted(async () => {
             <LikeOutlined v-else />
             <span>{{ selectedArticle.likes || 0 }} 赞</span>
           </button>
+
           <button
             type="button"
             :aria-label="selectedArticle.favorited ? '取消收藏文章' : '收藏文章'"
@@ -500,7 +689,13 @@ onMounted(async () => {
             <StarOutlined v-else />
             <span>{{ selectedArticle.favorited ? '已藏' : '收藏' }}</span>
           </button>
-          <button type="button" aria-label="查看评论" :class="{ active: hasUserCommented }" @click="scrollToComments">
+
+          <button
+            type="button"
+            aria-label="查看评论"
+            :class="{ active: hasUserCommented }"
+            @click="scrollToComments"
+          >
             <MessageFilled v-if="hasUserCommented" />
             <CommentOutlined v-else />
             <span>评论</span>
@@ -508,9 +703,21 @@ onMounted(async () => {
         </footer>
       </article>
 
-      <LiquidTabBar v-if="!selectedArticle" active-key="news" @change="handleTabChange" />
+      <LiquidTabBar
+        v-if="!selectedArticle"
+        active-key="news"
+        @change="handleTabChange"
+      />
+
       <transition name="toast">
-        <div v-if="toastText" class="app-toast" role="status" aria-live="polite">{{ toastText }}</div>
+        <div
+          v-if="toastText"
+          class="app-toast"
+          role="status"
+          aria-live="polite"
+        >
+          {{ toastText }}
+        </div>
       </transition>
     </section>
   </main>
@@ -631,7 +838,13 @@ onMounted(async () => {
   height: 32px;
   overflow: hidden;
   border-bottom: 1px solid #edf1f5;
-  mask-image: linear-gradient(to right, transparent 0, #000 18px, #000 calc(100% - 18px), transparent 100%);
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 18px,
+    #000 calc(100% - 18px),
+    transparent 100%
+  );
 }
 
 .feed-tabs :deep(.van-tabs__nav) {
@@ -815,8 +1028,8 @@ onMounted(async () => {
   grid-template-columns: 34px minmax(0, 1fr) 34px;
   align-items: center;
   gap: 9px;
-  padding: 8px 18px 6px;
   border-bottom: 1px solid #f1f3f6;
+  padding: 8px 18px 6px;
   background: rgba(255, 255, 255, 0.96);
 }
 
