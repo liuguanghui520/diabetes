@@ -141,6 +141,31 @@ export function registerAssistantRoutes(router, deps, options = {}) {
       req.body.attachments,
     )
 
+    // 上传附件到 Dify，获取 upload_file_id 用于 local_file 方式传递
+    let difyFileObj = null
+    const firstAttachment = req.body.attachments?.[0]
+    if (firstAttachment?.storage_path) {
+      try {
+        const uploadFileId = await difyClient.uploadFile({
+          appCode: 'assistant',
+          filePath: firstAttachment.storage_path,
+          fileName: firstAttachment.file_name || 'file',
+          mimeType: firstAttachment.mime_type || 'application/octet-stream',
+          user: String(req.user.id),
+        })
+        const fileType = String(firstAttachment.mime_type || '').startsWith('image/')
+          ? 'image'
+          : 'document'
+        difyFileObj = {
+          type: fileType,
+          transfer_method: 'local_file',
+          upload_file_id: uploadFileId,
+        }
+      } catch (error) {
+        console.error(`[dify] assistant file upload failed: ${error?.message || error}`)
+      }
+    }
+
     let conversation = null
 
     if (req.body.conversation_id) {
@@ -173,6 +198,7 @@ export function registerAssistantRoutes(router, deps, options = {}) {
           scope: 'assistant',
         }),
         attachments: req.body.attachments || [],
+        ...(difyFileObj ? { file: difyFileObj } : {}),
       },
     })
   }))
@@ -183,6 +209,31 @@ export function registerAssistantRoutes(router, deps, options = {}) {
       req.user.id,
       req.body.attachments,
     )
+
+    // 上传附件到 Dify，获取 upload_file_id 用于 local_file 方式传递
+    let difyFileObj = null
+    const firstAttachment = req.body.attachments?.[0]
+    if (firstAttachment?.storage_path) {
+      try {
+        const uploadFileId = await difyClient.uploadFile({
+          appCode: 'doctor',
+          filePath: firstAttachment.storage_path,
+          fileName: firstAttachment.file_name || 'file',
+          mimeType: firstAttachment.mime_type || 'application/octet-stream',
+          user: String(req.user.id),
+        })
+        const fileType = String(firstAttachment.mime_type || '').startsWith('image/')
+          ? 'image'
+          : 'document'
+        difyFileObj = {
+          type: fileType,
+          transfer_method: 'local_file',
+          upload_file_id: uploadFileId,
+        }
+      } catch (error) {
+        console.error(`[dify] doctor file upload failed: ${error?.message || error}`)
+      }
+    }
 
     const doctorId = Number(req.params.doctorId)
     let conversation = null
@@ -222,6 +273,7 @@ export function registerAssistantRoutes(router, deps, options = {}) {
       doctorId,
       inputs: {
         attachments: req.body.attachments || [],
+        ...(difyFileObj ? { file: difyFileObj } : {}),
       },
     })
   }))

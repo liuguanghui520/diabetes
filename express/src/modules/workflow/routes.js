@@ -308,20 +308,21 @@ export function registerWorkflowRoutes(router, deps, options = {}) {
       ? await sanitizeAttachmentPayload(store, req.user.id, [{ file_id: rawReportFileId }])
       : []
 
-    // 构建 Dify files 参数，通过 remote_url 方式传递文件
-    const difyFiles = []
-    for (const file of uploadMeta) {
-      if (file.url) {
-        const fileType = String(file.mime_type || '').startsWith('image/')
-          ? 'image'
-          : 'document'
-
-        difyFiles.push({
-          variable: 'file',
-          transfer_method: 'remote_url',
-          url: file.url,
-          type: fileType,
+    // 上传文件到 Dify，获取 upload_file_id 用于 local_file 方式传递
+    let difyUploadFileId = null
+    const firstFile = uploadMeta[0]
+    if (firstFile?.storage_path) {
+      try {
+        difyUploadFileId = await difyClient.uploadFile({
+          appCode: 'report',
+          filePath: firstFile.storage_path,
+          fileName: firstFile.file_name || 'report.pdf',
+          mimeType: firstFile.mime_type || 'application/octet-stream',
+          user: String(req.user.id),
         })
+      } catch (error) {
+        console.error(`[dify] file upload failed: ${error?.message || error}`)
+        // 上传失败不阻塞，降级为纯文本模式
       }
     }
 
@@ -337,10 +338,22 @@ export function registerWorkflowRoutes(router, deps, options = {}) {
         uploaded_files: uploadMeta,
       }
     }
+
+    // 将 Dify 文件 ID 放入 inputs.file（单对象格式，非数组）
+    if (difyUploadFileId) {
+      const fileType = String(firstFile.mime_type || '').startsWith('image/')
+        ? 'image'
+        : 'document'
+      inputs.file = {
+        type: fileType,
+        transfer_method: 'local_file',
+        upload_file_id: difyUploadFileId,
+      }
+    }
+
     await difyClient.enqueueWorkflow('report', inputs, req.user.id, {
       requestId,
       store,
-      files: difyFiles.length > 0 ? difyFiles : undefined,
       async onSuccess(workflowResult) {
         const interpretation = normalizeReportOutput(workflowResult.outputs)
 

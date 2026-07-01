@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { errors } from '../../http/errors.js'
 import { maskSensitive, safeJson } from '../../utils/json.js'
 
@@ -128,6 +129,34 @@ export function createDifyClient(config, overrides = {}) {
   }
 
   return {
+    async uploadFile({ appCode, filePath, fileName, mimeType, user }) {
+      const apiKey = config.dify.apiKeys[appCode]
+      if (!apiKey) {
+        throw errors.difyUnavailable('Dify API Key 未配置')
+      }
+
+      const fileBuffer = readFileSync(filePath)
+      const blob = new Blob([fileBuffer], { type: mimeType || 'application/octet-stream' })
+      const formData = new FormData()
+      formData.append('file', blob, fileName)
+      formData.append('user', String(user))
+
+      const response = await fetchImpl(`${config.dify.baseUrl}/v1/files/upload`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: formData,
+      })
+
+      if (!response.ok) {
+        throw errors.difyUnavailable(`Dify 文件上传失败：HTTP ${response.status}`)
+      }
+
+      const payload = await response.json()
+      return payload.id
+    },
+
     async runWorkflow(appCode, inputs, user, { requestId, store } = {}) {
       const started = Date.now()
       const result = await executeWorkflow(appCode, inputs, user)
