@@ -25,6 +25,14 @@ function readNumberEnv(name, defaultValue) {
   return value;
 }
 
+function readBooleanEnv(name, defaultValue) {
+  const rawValue = process.env[name];
+  if (rawValue === undefined || rawValue === "") {
+    return defaultValue;
+  }
+  return !["0", "false", "no", "off"].includes(rawValue.trim().toLowerCase());
+}
+
 function normalizeBaseUrl(value) {
   return value.replace(/\/+$/, "");
 }
@@ -42,6 +50,8 @@ export const config = {
   maxElapsedTime: readNumberEnv("DIFY_MAX_ELAPSED_TIME", 60),
   maxTotalTokens: readNumberEnv("DIFY_MAX_TOTAL_TOKENS", 10000),
   maxTotalSteps: readNumberEnv("DIFY_MAX_TOTAL_STEPS", 20),
+  autoUploadRequiredFiles: readBooleanEnv("DIFY_AUTO_UPLOAD_REQUIRED_FILES", true),
+  testFilePath: process.env.DIFY_TEST_FILE_PATH || "test-assets/placeholder.txt",
   testUserId: process.env.TEST_USER_ID || "10001",
   testDoctorId: process.env.TEST_DOCTOR_ID || "3",
   testOtherDoctorId: process.env.TEST_OTHER_DOCTOR_ID || "4",
