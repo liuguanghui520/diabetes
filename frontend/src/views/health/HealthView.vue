@@ -225,7 +225,7 @@ function createEmptyProfilePayload() {
       completed: false,
       completion_rate: 0,
     },
-    latest_measurements: {},
+    latest_measurements: null,
     latest_risk: null,
   }
 }

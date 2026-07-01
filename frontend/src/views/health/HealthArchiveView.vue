@@ -177,9 +177,10 @@ async function saveProfile() {
 
 async function interpretReport() {
   const text = reportText.value.trim()
+  const hasFile = reportFiles.value.length > 0
 
-  if (!text) {
-    showToast('请先粘贴报告文本。')
+  if (!text && !hasFile) {
+    showToast('请先粘贴报告文本或上传报告文件。')
     return
   }
 
@@ -204,7 +205,7 @@ async function interpretReport() {
 
     const response = await apiPost('/api/reports/interpret', {
       report_file_id: reportFileId,
-      report_text: text,
+      report_text: text || '请解析上传的报告文件中的指标数据',
       metadata: {
         file_names: reportFiles.value.map((file) => file.name),
       },

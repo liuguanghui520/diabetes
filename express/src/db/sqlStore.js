@@ -32,7 +32,10 @@ function addDays(date, days) {
 }
 
 function toDateOnly(date) {
-  return date.toISOString().slice(0, 10)
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
 }
 
 function todayOnly() {
@@ -1622,7 +1625,8 @@ export function createSqlStore(pool) {
       return one(result)
     },
 
-    async listConsultations({ userId = null, status = null } = {}) {
+    async listConsultations({ userId = null, status = null, doctorId = null, keyword = '' } = {}) {
+      const kw = `%${keyword || ''}%`
       const result = await pool.query(
         `select co.*, d.name as doctor_name, u.username
          from consultation_order co
@@ -1630,8 +1634,10 @@ export function createSqlStore(pool) {
          left join sys_user u on u.id = co.user_id
          where ($1::bigint is null or co.user_id = $1)
            and ($2::varchar is null or co.status = $2)
+           and ($3::bigint is null or co.doctor_id = $3)
+           and ($4 = '%%' or co.title like $4 or u.username like $4 or d.name like $4)
          order by co.updated_at desc`,
-        [userId, status]
+        [userId, status, doctorId, kw]
       )
       return result.rows
     },
@@ -1657,20 +1663,30 @@ export function createSqlStore(pool) {
       return one(result)
     },
 
-    async listAdminUsers({ page = 1, pageSize = 20 } = {}) {
+    async listAdminUsers({ page = 1, pageSize = 20, keyword = '', status = null } = {}) {
       const limit = Number(pageSize)
       const offset = (Number(page) - 1) * limit
+      const kw = `%${keyword || ''}%`
       const [items, count] = await Promise.all([
         pool.query(
           `select id, username, phone, email, role, status, nickname, avatar_url,
                   last_login_at, last_login_ip, created_at, updated_at
            from sys_user
            where deleted_at is null
+             and ($1 = '%%' or username like $1 or phone like $1 or email like $1 or nickname like $1)
+             and ($2::varchar is null or status = $2)
            order by created_at desc
-           limit $1 offset $2`,
-          [limit, offset]
+           limit $3 offset $4`,
+          [kw, status, limit, offset]
         ),
-        pool.query(`select count(*)::int as total from sys_user where deleted_at is null`)
+        pool.query(
+          `select count(*)::int as total
+           from sys_user
+           where deleted_at is null
+             and ($1 = '%%' or username like $1 or phone like $1 or email like $1 or nickname like $1)
+             and ($2::varchar is null or status = $2)`,
+          [kw, status]
+        )
       ])
 
       return { items: items.rows, total: count.rows[0]?.total || 0, page: Number(page), pageSize: limit }
@@ -1726,6 +1742,7 @@ export function createSqlStore(pool) {
     },
 
     async createAdminArticle(input) {
+      const status = input.status || 'draft'
       const result = await pool.query(
         `insert into article
          (category_id, title, summary, content, cover_url, tags, author, author_user_id,
@@ -1733,8 +1750,7 @@ export function createSqlStore(pool) {
           published_at, created_at, updated_at)
          values
          ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13,
-          case when $12 = 'published' then current_timestamp else null end,
-          current_timestamp, current_timestamp)
+          $14, current_timestamp, current_timestamp)
          returning *`,
         [
           input.category_id || null,
@@ -1748,8 +1764,9 @@ export function createSqlStore(pool) {
           input.content_md || null,
           input.content_html || null,
           input.audit_status || 'approved',
-          input.status || 'draft',
-          input.recommend_weight ?? 0
+          status,
+          input.recommend_weight ?? 0,
+          status === 'published' ? new Date() : null
         ]
       )
       return one(result)
@@ -1762,6 +1779,14 @@ export function createSqlStore(pool) {
       }
 
       const next = { ...before, ...input }
+      const newStatus = next.status || 'draft'
+      let publishedAt = before.published_at
+      if (newStatus === 'published' && !publishedAt) {
+        publishedAt = new Date()
+      } else if (newStatus !== 'published') {
+        publishedAt = null
+      }
+
       const result = await pool.query(
         `update article set
           category_id = $2,
@@ -1776,11 +1801,7 @@ export function createSqlStore(pool) {
           audit_status = $11,
           status = $12,
           recommend_weight = $13,
-          published_at = case
-            when $12 = 'published' and published_at is null then current_timestamp
-            when $12 <> 'published' then null
-            else published_at
-          end,
+          published_at = $14,
           updated_at = current_timestamp
          where id = $1
          returning *`,
@@ -1796,8 +1817,9 @@ export function createSqlStore(pool) {
           next.content_md || null,
           next.content_html || null,
           next.audit_status || 'approved',
-          next.status || 'draft',
-          next.recommend_weight ?? 0
+          newStatus,
+          next.recommend_weight ?? 0,
+          publishedAt
         ]
       )
       return { before, after: one(result) }

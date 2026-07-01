@@ -76,6 +76,9 @@ export function registerProfileRoutes(router, deps) {
         ...(profile || {}),
         nickname: profile?.nickname || user?.nickname || null,
         completion_rate: calculateCompletionRate(profile),
+        fasting_glucose: profile?.fasting_glucose || null,
+        postprandial_glucose: profile?.postprandial_glucose || null,
+        hba1c: profile?.hba1c || null,
       },
       user: user
         ? {

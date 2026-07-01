@@ -190,7 +190,10 @@ onMounted(loadRecords)
 
         <strong>打卡记录</strong>
 
-        <span></span>
+        <button type="button" class="analysis-nav-btn" @click="openAnalysis">
+          <TrophyOutlined />
+          分析
+        </button>
       </header>
 
       <div class="records-scroll">
@@ -292,22 +295,7 @@ onMounted(loadRecords)
           </article>
         </section>
 
-        <button
-          type="button"
-          class="analysis-entry"
-          @click="openAnalysis"
-        >
-          <span class="analysis-icon">
-            <TrophyOutlined />
-          </span>
 
-          <span class="analysis-copy">
-            <strong>打卡分析</strong>
-            <small>基于近期记录查看执行情况和建议</small>
-          </span>
-
-          <RightOutlined />
-        </button>
       </div>
     </section>
   </main>
@@ -367,6 +355,19 @@ onMounted(loadRecords)
   font-size: 17px;
   font-weight: 900;
   text-align: center;
+}
+
+.analysis-nav-btn {
+  display: flex !important;
+  width: auto !important;
+  height: auto !important;
+  gap: 3px;
+  padding: 4px 10px;
+  border-radius: 14px !important;
+  font-size: 12px !important;
+  font-weight: 600;
+  color: #1677ff !important;
+  background: #eaf3ff !important;
 }
 
 .records-scroll {

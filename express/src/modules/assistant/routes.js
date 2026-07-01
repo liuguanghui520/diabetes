@@ -66,7 +66,6 @@ export async function streamDifyChat({
       user: req.user.id,
       signal: req.signal
     })
-
     await proxyDifySse({
       response: difyResponse,
       res,

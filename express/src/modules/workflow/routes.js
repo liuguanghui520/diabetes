@@ -304,9 +304,10 @@ export function registerWorkflowRoutes(router, deps, options = {}) {
     const uploadMeta = req.body.report_file_id
       ? await sanitizeAttachmentPayload(store, req.user.id, [{ file_id: req.body.report_file_id }])
       : []
+
     const inputs = {
       user_id: String(req.user.id),
-      report_file_id: req.body.report_file_id || null,
+      report_file_id: req.body.report_file_id || 0,
       report_text: req.body.report_text || '',
       metadata: {
         ...req.body.metadata,
@@ -389,10 +390,10 @@ export function registerWorkflowRoutes(router, deps, options = {}) {
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date()
       d.setDate(d.getDate() - i)
-      const dateStr = d.toISOString().slice(0, 10)
+      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
       const record = records.find((r) => {
         const rd = r.checkin_date instanceof Date
-          ? r.checkin_date.toISOString().slice(0, 10)
+          ? `${r.checkin_date.getUTCFullYear()}-${String(r.checkin_date.getUTCMonth() + 1).padStart(2, '0')}-${String(r.checkin_date.getUTCDate()).padStart(2, '0')}`
           : String(r.checkin_date || '').slice(0, 10)
         return rd === dateStr
       })

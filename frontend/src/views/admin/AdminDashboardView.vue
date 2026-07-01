@@ -10,8 +10,9 @@ import {
   SendOutlined,
   TeamOutlined,
 } from '@ant-design/icons-vue'
-import { apiGet, apiPost, apiPut, authorizedFetch, getStoredUser, hasAuthSession } from '../../api/request'
+import { apiGet, apiPost, apiPut, apiDelete, authorizedFetch, getStoredUser, hasAuthSession } from '../../api/request'
 import { consumeSseStream } from '../../utils/sse'
+import { renderChatHtml } from '../../utils/chatRichText'
 
 const router = useRouter()
 const activeSection = ref('overview')
@@ -31,12 +32,34 @@ const adminMessages = ref([
   { role: 'assistant', content: '可以用自然语言查询后台数据，或草拟医生资料、坐诊时间等维护操作。涉及写库时请先确认。' },
 ])
 const articleForm = ref({
-  title: '糖尿病患者的饮食指南',
-  summary: '控制碳水化合物摄入，选择低糖水果，保持规律饮食。',
-  content: '后台录入的科普正文，可在用户端健康资讯展示。',
+  title: '',
+  summary: '',
+  content: '',
+  category_id: null,
+  cover_url: '',
+  tags: [],
+  author: '',
   status: 'draft',
   audit_status: 'approved',
+  recommend_weight: 0,
 })
+const editingArticleId = ref(null)
+const articleKeyword = ref('')
+const articleStatusFilter = ref('')
+const articlePage = ref(1)
+const articleTotal = ref(0)
+const articlePageSize = 20
+const userKeyword = ref('')
+const userStatusFilter = ref('')
+const userPage = ref(1)
+const userTotal = ref(0)
+const userPageSize = 20
+const consultKeyword = ref('')
+const consultDoctorFilter = ref('')
+const consultStatusFilter = ref('')
+const consultPage = ref(1)
+const consultTotal = ref(0)
+const consultPageSize = 20
 const doctorForm = ref(emptyDoctorForm())
 
 const navItems = [
@@ -89,17 +112,20 @@ async function loadAdminData() {
   try {
     const [dash, articleResult, doctorResult, userResult, consultationResult, logResult] = await Promise.all([
       apiGet('/api/admin/dashboard'),
-      apiGet('/api/admin/articles?page=1&pageSize=20'),
+      loadArticles(),
       apiGet('/api/admin/doctors?page=1&pageSize=20'),
-      apiGet('/api/admin/users?page=1&pageSize=20'),
-      apiGet('/api/admin/consultations'),
+      loadUsers(),
+      loadConsultations(),
       apiGet('/api/admin/dify-run-logs?page=1&pageSize=5'),
     ])
     dashboard.value = dash.data
-    articles.value = articleResult.data?.items || []
+    articles.value = articleResult?.items || []
+    articleTotal.value = articleResult?.total || 0
     doctors.value = doctorResult.data?.items || []
-    users.value = userResult.data?.items || []
-    consultations.value = consultationResult.data?.items || []
+    users.value = userResult?.items || []
+    userTotal.value = userResult?.total || 0
+    consultations.value = consultationResult || []
+    consultTotal.value = consultations.value.length
     logs.value = logResult.data?.items || []
     if (!doctorForm.value.id && doctors.value[0]) editDoctor(doctors.value[0])
   } catch (error) {
@@ -109,13 +135,104 @@ async function loadAdminData() {
   }
 }
 
+function resetArticleForm() {
+  editingArticleId.value = null
+  articleForm.value = {
+    title: '',
+    summary: '',
+    content: '',
+    category_id: null,
+    cover_url: '',
+    tags: [],
+    author: '',
+    status: 'draft',
+    audit_status: 'approved',
+    recommend_weight: 0,
+  }
+}
+
+async function loadArticles() {
+  const params = new URLSearchParams()
+  params.set('page', String(articlePage.value))
+  params.set('pageSize', String(articlePageSize))
+  if (articleKeyword.value.trim()) params.set('keyword', articleKeyword.value.trim())
+  if (articleStatusFilter.value) params.set('status', articleStatusFilter.value)
+  const result = await apiGet(`/api/admin/articles?${params.toString()}`)
+  return result.data
+}
+
+async function searchArticles() {
+  articlePage.value = 1
+  try {
+    const data = await loadArticles()
+    articles.value = data?.items || []
+    articleTotal.value = data?.total || 0
+  } catch (error) {
+    showNotice(error.message || '查询失败。')
+  }
+}
+
+async function changeArticlePage(page) {
+  articlePage.value = page
+  try {
+    const data = await loadArticles()
+    articles.value = data?.items || []
+    articleTotal.value = data?.total || 0
+  } catch (error) {
+    showNotice(error.message || '加载失败。')
+  }
+}
+
 async function createArticle() {
   try {
     const result = await apiPost('/api/admin/articles', articleForm.value)
     articles.value = [result.data, ...articles.value]
+    articleTotal.value += 1
+    resetArticleForm()
     showNotice('文章已创建。')
   } catch (error) {
     showNotice(error.message || '创建失败。')
+  }
+}
+
+function editArticle(article) {
+  editingArticleId.value = article.id
+  articleForm.value = {
+    title: article.title || '',
+    summary: article.summary || '',
+    content: article.content || '',
+    category_id: article.category_id || null,
+    cover_url: article.cover_url || '',
+    tags: article.tags || [],
+    author: article.author || '',
+    status: article.status || 'draft',
+    audit_status: article.audit_status || 'approved',
+    recommend_weight: article.recommend_weight ?? 0,
+  }
+}
+
+async function updateArticle() {
+  if (!editingArticleId.value) return
+  try {
+    const result = await apiPut(`/api/admin/articles/${editingArticleId.value}`, articleForm.value)
+    articles.value = articles.value.map((item) => item.id === editingArticleId.value ? result.data : item)
+    resetArticleForm()
+    showNotice('文章已更新。')
+  } catch (error) {
+    showNotice(error.message || '更新失败。')
+  }
+}
+
+async function deleteArticle(article) {
+  if (!window.confirm(`确定要删除文章「${article.title}」吗？此操作不可恢复。`)) return
+  try {
+    await apiDelete(`/api/admin/articles/${article.id}`)
+    articles.value = articles.value.filter((item) => item.id !== article.id)
+    articleTotal.value = Math.max(0, articleTotal.value - 1)
+    if (editingArticleId.value === article.id) resetArticleForm()
+    showNotice('文章已删除。')
+  } catch (error) {
+    showNotice(error.message || '删除失败。')
   }
 }
 
@@ -126,6 +243,16 @@ async function publishArticle(article) {
     showNotice('文章已发布。')
   } catch (error) {
     showNotice(error.message || '发布失败。')
+  }
+}
+
+async function unpublishArticle(article) {
+  try {
+    const result = await apiPost(`/api/admin/articles/${article.id}/unpublish`)
+    articles.value = articles.value.map((item) => item.id === article.id ? result.data : item)
+    showNotice('文章已下线。')
+  } catch (error) {
+    showNotice(error.message || '下线失败。')
   }
 }
 
@@ -170,10 +297,76 @@ async function toggleUserStatus(user) {
   }
 }
 
+async function loadUsers() {
+  const params = new URLSearchParams()
+  params.set('page', String(userPage.value))
+  params.set('pageSize', String(userPageSize))
+  if (userKeyword.value.trim()) params.set('keyword', userKeyword.value.trim())
+  if (userStatusFilter.value) params.set('status', userStatusFilter.value)
+  const result = await apiGet(`/api/admin/users?${params.toString()}`)
+  return result.data
+}
+
+async function searchUsers() {
+  userPage.value = 1
+  try {
+    const data = await loadUsers()
+    users.value = data?.items || []
+    userTotal.value = data?.total || 0
+  } catch (error) {
+    showNotice(error.message || '查询失败。')
+  }
+}
+
+async function changeUserPage(page) {
+  userPage.value = page
+  try {
+    const data = await loadUsers()
+    users.value = data?.items || []
+    userTotal.value = data?.total || 0
+  } catch (error) {
+    showNotice(error.message || '加载失败。')
+  }
+}
+
+async function loadConsultations() {
+  const params = new URLSearchParams()
+  params.set('page', String(consultPage.value))
+  params.set('pageSize', String(consultPageSize))
+  if (consultKeyword.value.trim()) params.set('keyword', consultKeyword.value.trim())
+  if (consultStatusFilter.value) params.set('status', consultStatusFilter.value)
+  if (consultDoctorFilter.value) params.set('doctorId', consultDoctorFilter.value)
+  const result = await apiGet(`/api/admin/consultations?${params.toString()}`)
+  const items = result.data?.items || result.data || []
+  return items
+}
+
+async function searchConsultations() {
+  consultPage.value = 1
+  try {
+    consultations.value = await loadConsultations()
+    consultTotal.value = consultations.value.length
+  } catch (error) {
+    showNotice(error.message || '查询失败。')
+  }
+}
+
+async function changeConsultPage(page) {
+  consultPage.value = page
+  try {
+    consultations.value = await loadConsultations()
+    consultTotal.value = consultations.value.length
+  } catch (error) {
+    showNotice(error.message || '加载失败。')
+  }
+}
+
 async function readSse(response, target) {
   await consumeSseStream(response, {
     async onMessage(data, rawText) {
-      target.content += data.delta || data.content || data.answer || rawText || ''
+      const delta = data.delta || data.content || data.answer || rawText || ''
+      target.content += delta
+      target.html = renderChatHtml(target.content).html
     },
     async onMessageEnd(data) {
       if (data.conversation_id) {
@@ -206,6 +399,7 @@ async function loadAdminAssistantHistory() {
     const historyMessages = (messagesResult.data || []).map((item) => ({
       role: item.role,
       content: item.content || '',
+      html: item.role === 'assistant' ? renderChatHtml(item.content || '').html : '',
     }))
 
     if (historyMessages.length) {
@@ -306,7 +500,12 @@ onMounted(async () => {
           <h2>管理员 AI 助手</h2>
           <div class="admin-chat-log">
             <article v-for="(item, index) in adminMessages" :key="index" :class="item.role">
-              {{ item.content || '处理中…' }}
+              <template v-if="item.role === 'assistant' && item.html">
+                <div v-html="item.html" />
+              </template>
+              <template v-else>
+                {{ item.content || '处理中…' }}
+              </template>
             </article>
           </div>
           <form class="admin-chat-form" @submit.prevent="sendAdminMessage">
@@ -316,25 +515,70 @@ onMounted(async () => {
         </section>
 
         <section v-if="activeSection === 'articles'" class="admin-card">
-          <h2>新增科普文章</h2>
+          <h2>{{ editingArticleId ? '编辑文章' : '新增科普文章' }}</h2>
           <div class="form-grid">
             <input v-model="articleForm.title" aria-label="文章标题" placeholder="文章标题" />
             <input v-model="articleForm.summary" aria-label="文章摘要" placeholder="摘要" />
-            <textarea v-model="articleForm.content" aria-label="文章正文" placeholder="正文"></textarea>
-            <button type="button" @click="createArticle">创建文章</button>
+            <textarea v-model="articleForm.content" aria-label="文章正文" placeholder="正文（支持 Markdown）"></textarea>
+            <div class="form-row">
+              <input v-model="articleForm.cover_url" aria-label="封面图 URL" placeholder="封面图 URL（可选）" />
+              <input v-model="articleForm.author" aria-label="作者" placeholder="作者（可选）" />
+            </div>
+            <div class="form-row">
+              <select v-model="articleForm.status" aria-label="发布状态">
+                <option value="draft">草稿</option>
+                <option value="published">已发布</option>
+                <option value="offline">已下线</option>
+              </select>
+              <select v-model="articleForm.audit_status" aria-label="审核状态">
+                <option value="pending_review">待审核</option>
+                <option value="approved">已通过</option>
+                <option value="rejected">已驳回</option>
+              </select>
+              <input v-model.number="articleForm.recommend_weight" type="number" aria-label="推荐权重" placeholder="推荐权重" />
+            </div>
+            <div class="form-actions">
+              <button v-if="editingArticleId" type="button" @click="updateArticle">保存修改</button>
+              <button v-else type="button" @click="createArticle">创建文章</button>
+              <button v-if="editingArticleId" type="button" class="btn-secondary" @click="resetArticleForm">取消编辑</button>
+            </div>
           </div>
+
+          <div class="search-bar">
+            <input v-model="articleKeyword" aria-label="搜索文章" placeholder="搜索标题或摘要..." @keyup.enter="searchArticles" />
+            <select v-model="articleStatusFilter" @change="searchArticles" aria-label="状态筛选">
+              <option value="">全部状态</option>
+              <option value="draft">草稿</option>
+              <option value="published">已发布</option>
+              <option value="offline">已下线</option>
+            </select>
+            <button type="button" @click="searchArticles">搜索</button>
+          </div>
+
           <div class="table-wrap">
             <table>
-              <thead><tr><th>标题</th><th>状态</th><th>阅读</th><th>操作</th></tr></thead>
+              <thead><tr><th>标题</th><th>状态</th><th>审核</th><th>阅读</th><th>更新时间</th><th>操作</th></tr></thead>
               <tbody>
                 <tr v-for="article in articles" :key="article.id">
-                  <td>{{ article.title }}</td>
-                  <td>{{ article.status }}</td>
+                  <td class="article-title-cell">{{ article.title }}</td>
+                  <td><span :class="'status-tag status-' + article.status">{{ article.status === 'draft' ? '草稿' : article.status === 'published' ? '已发布' : '已下线' }}</span></td>
+                  <td>{{ article.audit_status === 'approved' ? '已通过' : article.audit_status === 'pending_review' ? '待审核' : '已驳回' }}</td>
                   <td>{{ article.view_count || 0 }}</td>
-                  <td><button type="button" @click="publishArticle(article)">发布</button></td>
+                  <td class="time-cell">{{ article.updated_at?.slice(0, 10) || '-' }}</td>
+                  <td class="action-cell">
+                    <button type="button" @click="editArticle(article)">编辑</button>
+                    <button v-if="article.status !== 'published'" type="button" @click="publishArticle(article)">发布</button>
+                    <button v-if="article.status === 'published'" type="button" @click="unpublishArticle(article)">下线</button>
+                    <button type="button" class="btn-danger" @click="deleteArticle(article)">删除</button>
+                  </td>
                 </tr>
               </tbody>
             </table>
+            <div v-if="articleTotal > articlePageSize" class="pagination">
+              <button type="button" :disabled="articlePage <= 1" @click="changeArticlePage(articlePage - 1)">上一页</button>
+              <span>第 {{ articlePage }} 页 / 共 {{ Math.ceil(articleTotal / articlePageSize) }} 页（{{ articleTotal }} 条）</span>
+              <button type="button" :disabled="articlePage >= Math.ceil(articleTotal / articlePageSize)" @click="changeArticlePage(articlePage + 1)">下一页</button>
+            </div>
           </div>
         </section>
 
@@ -364,37 +608,74 @@ onMounted(async () => {
 
         <section v-if="activeSection === 'users'" class="admin-card">
           <h2>用户管理</h2>
+          <div class="search-bar">
+            <input v-model="userKeyword" aria-label="搜索用户" placeholder="搜索用户名、手机号、邮箱或昵称..." @keyup.enter="searchUsers" />
+            <select v-model="userStatusFilter" @change="searchUsers" aria-label="状态筛选">
+              <option value="">全部状态</option>
+              <option value="active">正常</option>
+              <option value="disabled">已禁用</option>
+              <option value="locked">已锁定</option>
+            </select>
+            <button type="button" @click="searchUsers">搜索</button>
+          </div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>ID</th><th>用户名</th><th>角色</th><th>状态</th><th>操作</th></tr></thead>
+              <thead><tr><th>ID</th><th>用户名</th><th>昵称</th><th>手机号</th><th>角色</th><th>状态</th><th>最后登录</th><th>操作</th></tr></thead>
               <tbody>
                 <tr v-for="user in users" :key="user.id">
                   <td>{{ user.id }}</td>
                   <td>{{ user.username }}</td>
+                  <td>{{ user.nickname || '-' }}</td>
+                  <td>{{ user.phone || '-' }}</td>
                   <td>{{ user.role }}</td>
-                  <td>{{ user.status }}</td>
+                  <td><span :class="'status-tag status-' + user.status">{{ user.status === 'active' ? '正常' : user.status === 'disabled' ? '已禁用' : '已锁定' }}</span></td>
+                  <td class="time-cell">{{ user.last_login_at?.slice(0, 16) || '从未登录' }}</td>
                   <td><button type="button" @click="toggleUserStatus(user)">{{ user.status === 'active' ? '禁用' : '启用' }}</button></td>
                 </tr>
               </tbody>
             </table>
+            <div v-if="userTotal > userPageSize" class="pagination">
+              <button type="button" :disabled="userPage <= 1" @click="changeUserPage(userPage - 1)">上一页</button>
+              <span>第 {{ userPage }} 页 / 共 {{ Math.ceil(userTotal / userPageSize) }} 页（{{ userTotal }} 条）</span>
+              <button type="button" :disabled="userPage >= Math.ceil(userTotal / userPageSize)" @click="changeUserPage(userPage + 1)">下一页</button>
+            </div>
           </div>
         </section>
 
         <section v-if="activeSection === 'consultations'" class="admin-card">
           <h2>医生咨询工单</h2>
+          <div class="search-bar">
+            <input v-model="consultKeyword" aria-label="搜索工单" placeholder="搜索问题、用户名或医生..." @keyup.enter="searchConsultations" />
+            <select v-model="consultStatusFilter" @change="searchConsultations" aria-label="状态筛选">
+              <option value="">全部状态</option>
+              <option value="active">进行中</option>
+              <option value="closed">已关闭</option>
+            </select>
+            <select v-model="consultDoctorFilter" @change="searchConsultations" aria-label="医生筛选">
+              <option value="">全部医生</option>
+              <option v-for="d in doctors" :key="d.id" :value="d.id">{{ d.name }}</option>
+            </select>
+            <button type="button" @click="searchConsultations">搜索</button>
+          </div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>ID</th><th>用户</th><th>医生</th><th>问题</th><th>状态</th></tr></thead>
+              <thead><tr><th>ID</th><th>用户</th><th>医生</th><th>问题</th><th>状态</th><th>时间</th></tr></thead>
               <tbody>
                 <tr v-for="item in consultations" :key="item.id">
                   <td>{{ item.id }}</td>
                   <td>{{ item.username || item.user_id }}</td>
-                  <td>{{ item.doctor_name || item.doctor_id }}</td>
-                  <td>{{ item.title }}</td>
-                  <td>{{ item.status }}</td>
+                  <td>{{ item.doctor_name || item.doctor_id || '-' }}</td>
+                  <td class="article-title-cell">{{ item.title }}</td>
+                  <td><span :class="'status-tag status-' + (item.status === 'active' ? 'published' : 'draft')">{{ item.status === 'active' ? '进行中' : '已关闭' }}</span></td>
+                  <td class="time-cell">{{ item.updated_at?.slice(0, 16) || item.created_at?.slice(0, 16) || '-' }}</td>
                 </tr>
               </tbody>
             </table>
+            <div v-if="consultTotal > consultPageSize" class="pagination">
+              <button type="button" :disabled="consultPage <= 1" @click="changeConsultPage(consultPage - 1)">上一页</button>
+              <span>第 {{ consultPage }} 页 / 共 {{ Math.ceil(consultTotal / consultPageSize) }} 页（{{ consultTotal }} 条）</span>
+              <button type="button" :disabled="consultPage >= Math.ceil(consultTotal / consultPageSize)" @click="changeConsultPage(consultPage + 1)">下一页</button>
+            </div>
           </div>
         </section>
       </section>
@@ -614,11 +895,193 @@ td button { padding: 6px 8px; font-size: 12px; }
 .doctor-list-mini small { overflow: hidden; color: #738196; font-size: 11px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
 
 .admin-chat-log { display: grid; gap: 10px; max-height: 42vh; overflow-y: auto; margin-bottom: 12px; }
-.admin-chat-log article { border-radius: 8px; padding: 10px 12px; background: #f2f5fa; font-size: 13px; font-weight: 800; line-height: 1.55; white-space: pre-wrap; }
+.admin-chat-log article { border-radius: 8px; padding: 8px 12px; background: #f2f5fa; font-size: 13px; line-height: 1.55; }
 .admin-chat-log article.user { justify-self: end; max-width: 82%; color: #fff; background: #1677ff; }
 .admin-chat-form { display: grid; grid-template-columns: minmax(0, 1fr) 42px; gap: 8px; }
 .admin-chat-form button { display: grid; place-items: center; border-radius: 8px; color: #fff; background: #1677ff; font-size: 16px; }
 .admin-chat-form button:disabled { opacity: 0.6; }
 
 .admin-toast { position: fixed; right: 24px; bottom: 24px; border-radius: 8px; padding: 12px 14px; color: #ffffff; background: rgba(20, 32, 51, 0.94); }
+
+.search-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.search-bar input {
+  min-width: 0;
+  flex: 1 1 140px;
+  border: 1px solid #dfe6f0;
+  border-radius: 7px;
+  padding: 8px 11px;
+  color: #182033;
+  background: #fbfcfe;
+  font: inherit;
+  font-size: 13px;
+}
+
+.search-bar select {
+  min-width: 0;
+  flex: 0 0 auto;
+  border: 1px solid #dfe6f0;
+  border-radius: 7px;
+  padding: 8px 10px;
+  color: #182033;
+  background: #fbfcfe;
+  font: inherit;
+  font-size: 13px;
+}
+
+.search-bar button {
+  flex: 0 0 auto;
+  border-radius: 7px;
+  padding: 8px 14px;
+  color: #ffffff;
+  background: #1677ff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 9px;
+}
+
+.form-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-secondary {
+  background: #6b7a90 !important;
+}
+
+.btn-danger {
+  background: #e5484d !important;
+}
+
+.status-tag {
+  display: inline-block;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.status-published,
+.status-active {
+  color: #0c7f3c;
+  background: #e6f7ee;
+}
+
+.status-draft,
+.status-disabled,
+.status-locked,
+.status-offline {
+  color: #8b6914;
+  background: #fff7e0;
+}
+
+.article-title-cell {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.time-cell {
+  white-space: nowrap;
+  font-size: 11px;
+  color: #738196;
+}
+
+.action-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: #607086;
+}
+
+.pagination button {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.pagination button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ---------- Chat Rich Text ---------- */
+.admin-chat-log :deep(.chat-rich-content) {
+  word-break: break-word;
+}
+
+.admin-chat-log :deep(.chat-answer) > :first-child { margin-top: 0; }
+.admin-chat-log :deep(.chat-answer) > :last-child { margin-bottom: 0; }
+
+.admin-chat-log :deep(p) { margin: 2px 0; }
+.admin-chat-log :deep(ul),
+.admin-chat-log :deep(ol) { padding-left: 18px; margin: 2px 0; }
+.admin-chat-log :deep(pre) { margin: 4px 0; border-radius: 10px; padding: 8px; background: rgba(0,0,0,.04); font-size: 12px; overflow-x: auto; }
+
+.admin-chat-log :deep(.chat-thinking) {
+  border: 1px solid rgba(58,112,183,.18);
+  border-radius: 14px;
+  margin-bottom: 8px;
+  background: linear-gradient(180deg, rgba(255,255,255,.8), rgba(235,242,252,.82));
+}
+
+.admin-chat-log :deep(.chat-thinking-title) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  list-style: none;
+  cursor: pointer;
+  padding: 10px 13px;
+  color: #55708f;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.admin-chat-log :deep(.chat-thinking-title::-webkit-details-marker) {
+  display: none;
+}
+
+.admin-chat-log :deep(.chat-thinking-title::after) {
+  content: '展开';
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.admin-chat-log :deep(.chat-thinking[open] .chat-thinking-title::after) {
+  content: '收起';
+}
+
+.admin-chat-log :deep(.chat-thinking-body) {
+  padding: 0 13px 10px;
+}
+
+.admin-chat-log :deep(.chat-thinking pre) {
+  margin: 0 0 6px;
+  border-radius: 10px;
+  padding: 8px 10px;
+  color: #51667f;
+  background: rgba(77,114,162,.08);
+  font-size: 11px;
+  line-height: 1.5;
+}
 </style>

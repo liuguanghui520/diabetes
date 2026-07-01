@@ -158,6 +158,7 @@ async function resolveOwnedUpload(store, userId, fileId) {
   return {
     file_id: upload.file_id,
     file_name: upload.file_name,
+    stored_name: upload.stored_name,
     mime_type: upload.mime_type,
     size: Number(upload.size_bytes || upload.size || 0),
     url: upload.url,

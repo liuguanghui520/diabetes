@@ -172,7 +172,7 @@ export function registerRiskRoutes(router, deps) {
       waist_cm: profileSnapshot.waist_cm ?? 0,
       sbp_mm_hg: profileSnapshot.sbp_mm_hg ?? 0,
       score: scoreResult.score ?? 0,
-      risk_level: scoreResult.risk_level || 'low',
+      risk_level: (scoreResult.risk_level === 'diagnosed' ? 'low' : scoreResult.risk_level) || 'low',
       is_high_risk: scoreResult.is_high_risk ?? false
     }
 

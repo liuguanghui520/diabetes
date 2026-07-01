@@ -57,13 +57,14 @@ export function createDifyClient(config, overrides = {}) {
     return response
   }
 
-  async function executeWorkflow(appCode, inputs, user, { signal } = {}) {
+  async function executeWorkflow(appCode, inputs, user, { signal, files } = {}) {
     const apiKey = config.dify.apiKeys[appCode]
     const body = {
       inputs,
       response_mode: 'blocking',
       user: String(user)
     }
+    if (files) body.files = files
 
     const response = await request('/v1/workflows/run', apiKey, body, { signal })
     const payload = await response.json()
@@ -148,13 +149,13 @@ export function createDifyClient(config, overrides = {}) {
       return result
     },
 
-    async enqueueWorkflow(appCode, inputs, user, { requestId, store, onSuccess, onFailure } = {}) {
+    async enqueueWorkflow(appCode, inputs, user, { requestId, store, onSuccess, onFailure, files } = {}) {
       const started = Date.now()
       const log = await createRunningLog({ appCode, inputs, user, requestId, store })
 
       scheduleBackground(async () => {
         try {
-          const workflowResult = await executeWorkflow(appCode, inputs, user)
+          const workflowResult = await executeWorkflow(appCode, inputs, user, { files })
           const domainResult = await onSuccess?.(workflowResult)
 
           await finishLog({

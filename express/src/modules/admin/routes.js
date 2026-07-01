@@ -241,7 +241,9 @@ export function registerAdminRoutes(router, deps) {
   router.get('/admin/consultations', auth, asyncHandler(async (req, res) => {
     sendOk(res, {
       items: await deps.store.listConsultations({
-        status: req.query.status || null
+        status: req.query.status || null,
+        doctorId: req.query.doctorId || null,
+        keyword: req.query.keyword || ''
       })
     })
   }))
@@ -290,7 +292,9 @@ export function registerAdminRoutes(router, deps) {
       appType: 'admin',
       inputs: {
         role: req.user.role,
-        context: req.body.context,
+        context: typeof req.body.context === 'string'
+          ? req.body.context
+          : JSON.stringify(req.body.context || {}),
       },
     })
   }))

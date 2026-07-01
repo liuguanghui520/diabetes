@@ -38,7 +38,7 @@ export function createHelmetMiddleware(config) {
 export function createGeneralRateLimit(config) {
   return rateLimit({
     windowMs: config.security?.rateLimitWindowMs || 15 * 60 * 1000,
-    limit: config.security?.rateLimitMax || 600,
+    limit: config.security?.rateLimitMax || 2000,
     standardHeaders: 'draft-8',
     legacyHeaders: false,
     message: {
@@ -52,7 +52,7 @@ export function createGeneralRateLimit(config) {
 export function createSensitiveRateLimit(config) {
   return rateLimit({
     windowMs: config.security?.sensitiveRateLimitWindowMs || 10 * 60 * 1000,
-    limit: config.security?.sensitiveRateLimitMax || 30,
+    limit: config.security?.sensitiveRateLimitMax || 100,
     standardHeaders: 'draft-8',
     legacyHeaders: false,
     skipSuccessfulRequests: false,
