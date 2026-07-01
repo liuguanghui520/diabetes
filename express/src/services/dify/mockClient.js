@@ -5,7 +5,8 @@ function encodeSse(event, data) {
 export function createMockDifyClient() {
   const calls = {
     workflows: [],
-    chats: []
+    chats: [],
+    uploads: []
   }
 
   return {
@@ -117,6 +118,11 @@ export function createMockDifyClient() {
     },
     normalizeWorkflowAdvice(outputs, fallback) {
       return outputs.advice || fallback
+    },
+    async uploadFile({ appCode, filePath, fileName, mimeType, user }) {
+      const fileId = `mock_dify_file_${calls.uploads.length + 1}`
+      calls.uploads.push({ appCode, filePath, fileName, mimeType, user, fileId })
+      return fileId
     },
     async chatStream(input) {
       calls.chats.push(input)
