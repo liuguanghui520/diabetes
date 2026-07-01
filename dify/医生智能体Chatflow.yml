@@ -1,0 +1,1056 @@
+app:
+  description: ''
+  icon: sunglasses
+  icon_background: '#E4FBCC'
+  icon_type: emoji
+  mode: advanced-chat
+  name: 医生智能体Chatflow
+  use_icon_as_answer_icon: false
+dependencies:
+- current_identifier: null
+  type: marketplace
+  value:
+    marketplace_plugin_unique_identifier: langgenius/deepseek:0.0.17@f7a5c1d222d17ee419b17a80d6e4923838fe93788dc724a3af73fbc6990b3a32
+    version: null
+- current_identifier: null
+  type: marketplace
+  value:
+    marketplace_plugin_unique_identifier: langgenius/zhipuai:0.0.30@26018901445dfce76077e57c38582b44d9a91ddc4ff86370e9a769cf8e7af5b5
+    version: null
+kind: app
+version: 0.6.0
+workflow:
+  conversation_variables:
+  - description: ''
+    id: e1c0630e-4b59-4fe0-9a95-f893be4eab06
+    name: conv_risk_summary
+    selector:
+    - conversation
+    - conv_risk_summary
+    value: ''
+    value_type: string
+  - description: ''
+    id: 457e3b78-d037-4702-9c50-cc0b111107e7
+    name: conv_profile_summary
+    selector:
+    - conversation
+    - conv_profile_summary
+    value: ''
+    value_type: string
+  - description: ''
+    id: 1758a439-563a-4f80-ab33-e191cd4417b6
+    name: conv_doctor_summary
+    selector:
+    - conversation
+    - conv_doctor_summary
+    value: ''
+    value_type: string
+  - description: ''
+    id: e51ff3bf-a7ba-4c2f-8797-eb5ae703fcc1
+    name: conv_doctor_id
+    selector:
+    - conversation
+    - conv_doctor_id
+    value: ''
+    value_type: string
+  - description: ''
+    id: 66b9c3c7-2fe4-4aa6-a3ce-70f02e9b2016
+    name: conv_user_id
+    selector:
+    - conversation
+    - conv_user_id
+    value: ''
+    value_type: string
+  environment_variables:
+  - description: ''
+    id: 12da9423-11d3-4792-92da-8039e103cea5
+    name: TOKEN
+    selector:
+    - env
+    - TOKEN
+    value: H1b67KJR9MBFQXfmO8tJ8REVa6sv1zecJr3bgmhYcXSgVZmv6bHYmyD97qy9yx20
+    value_type: string
+  - description: ''
+    id: c9b62f04-7d16-4abe-a7fd-cc07d9b7ade2
+    name: express_endpoint
+    selector:
+    - env
+    - express_endpoint
+    value: http://172.17.0.1:8080
+    value_type: string
+  features:
+    file_upload:
+      allowed_file_extensions:
+      - .JPG
+      - .JPEG
+      - .PNG
+      - .GIF
+      - .WEBP
+      - .SVG
+      allowed_file_types:
+      - image
+      allowed_file_upload_methods:
+      - local_file
+      - remote_url
+      enabled: false
+      fileUploadConfig:
+        attachment_image_file_size_limit: 2
+        audio_file_size_limit: 50
+        batch_count_limit: 5
+        file_size_limit: 15
+        file_upload_limit: 20
+        image_file_batch_limit: 10
+        image_file_size_limit: 10
+        single_chunk_attachment_limit: 10
+        video_file_size_limit: 100
+        workflow_file_upload_limit: 10
+      image:
+        enabled: false
+        number_limits: 3
+        transfer_methods:
+        - local_file
+        - remote_url
+      number_limits: 3
+    opening_statement: ''
+    retriever_resource:
+      enabled: true
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - data:
+        sourceType: llm
+        targetType: answer
+      id: llm-answer
+      selected: false
+      source: llm
+      sourceHandle: source
+      target: answer
+      targetHandle: target
+      type: custom
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: http-request
+        targetType: code
+      id: 1782628023428-source-1782631791837-target
+      selected: false
+      source: '1782628023428'
+      sourceHandle: source
+      target: '1782631791837'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: http-request
+        targetType: code
+      id: 1782628440677-source-1782632068509-target
+      selected: false
+      source: '1782628440677'
+      sourceHandle: source
+      target: '1782632068509'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: code
+        targetType: if-else
+      id: 1782631791837-source-1782633251553-target
+      selected: false
+      source: '1782631791837'
+      sourceHandle: source
+      target: '1782633251553'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: code
+        targetType: if-else
+      id: 1782632068509-source-1782633251553-target
+      selected: false
+      source: '1782632068509'
+      sourceHandle: source
+      target: '1782633251553'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: if-else
+        targetType: answer
+      id: 1782633251553-68ed7be7-f00b-424d-ab51-d07111730d7c-1782633278004-target
+      selected: false
+      source: '1782633251553'
+      sourceHandle: 68ed7be7-f00b-424d-ab51-d07111730d7c
+      target: '1782633278004'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: if-else
+        targetType: answer
+      id: 1782633251553-1386cab1-d687-46bd-8b7d-5bce7c537b49-1782632717005-target
+      selected: false
+      source: '1782633251553'
+      sourceHandle: 1386cab1-d687-46bd-8b7d-5bce7c537b49
+      target: '1782632717005'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: if-else
+        targetType: knowledge-retrieval
+      id: 1782633251553-true-1782633596836-target
+      selected: false
+      source: '1782633251553'
+      sourceHandle: 'true'
+      target: '1782633596836'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: knowledge-retrieval
+        targetType: llm
+      id: 1782633596836-source-llm-target
+      selected: false
+      source: '1782633596836'
+      sourceHandle: source
+      target: llm
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: start
+        targetType: code
+      id: 1782627729086-source-1782633813659-target
+      selected: false
+      source: '1782627729086'
+      sourceHandle: source
+      target: '1782633813659'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: code
+        targetType: if-else
+      id: 1782633813659-source-1782634016988-target
+      selected: false
+      source: '1782633813659'
+      sourceHandle: source
+      target: '1782634016988'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: if-else
+        targetType: assigner
+      id: 1782634016988-true-1782633948007-target
+      selected: false
+      source: '1782634016988'
+      sourceHandle: 'true'
+      target: '1782633948007'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: assigner
+        targetType: http-request
+      id: 1782633948007-source-1782628023428-target
+      selected: false
+      source: '1782633948007'
+      sourceHandle: source
+      target: '1782628023428'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: assigner
+        targetType: http-request
+      id: 1782633948007-source-1782628440677-target
+      selected: false
+      source: '1782633948007'
+      sourceHandle: source
+      target: '1782628440677'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: if-else
+        targetType: http-request
+      id: 1782634016988-false-1782628023428-target
+      source: '1782634016988'
+      sourceHandle: 'false'
+      target: '1782628023428'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: if-else
+        targetType: http-request
+      id: 1782634016988-false-1782628440677-target
+      source: '1782634016988'
+      sourceHandle: 'false'
+      target: '1782628440677'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: if-else
+        targetType: http-request
+      id: 1782891342517-true-1782891366147-target
+      source: '1782891342517'
+      sourceHandle: 'true'
+      target: '1782891366147'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    nodes:
+    - data:
+        selected: false
+        title: 用户输入
+        type: start
+        variables:
+        - default: ''
+          hint: ''
+          label: user_id
+          max_length: 256
+          options: []
+          placeholder: ''
+          required: true
+          type: text-input
+          variable: user_id
+        - default: ''
+          hint: ''
+          label: doctor_id
+          max_length: 256
+          options: []
+          placeholder: ''
+          required: true
+          type: text-input
+          variable: doctor_id
+        - default: ''
+          hint: ''
+          label: app_type
+          max_length: 256
+          options: []
+          placeholder: ''
+          required: true
+          type: text-input
+          variable: app_type
+      height: 160
+      id: '1782627729086'
+      position:
+        x: 2.297396709994075
+        y: 64.00000000000001
+      positionAbsolute:
+        x: 2.297396709994075
+        y: 64.00000000000001
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        context:
+          enabled: true
+          variable_selector:
+          - '1782633596836'
+          - result
+        memory:
+          query_prompt_template: '{{#sys.query#}}
+
+
+            {{#sys.files#}}'
+          role_prefix:
+            assistant: ''
+            user: ''
+          window:
+            enabled: false
+            size: 10
+        model:
+          completion_params:
+            temperature: 0.7
+          mode: chat
+          name: deepseek-v4-pro
+          provider: langgenius/deepseek/deepseek
+        prompt_template:
+        - id: e0993b51-6003-4b68-9211-989e0fb7b65a
+          role: system
+          text: '#角色
+
+            你正在扮演医生{{#1782631791837.doctor_summary#}}，负责回答用户关于糖尿病的咨询问题{{#sys.query#}}
+
+
+            #用户的健康信息
+
+            {{#1782632068509.profile_summary#}}
+
+            {{#1782632068509.risk_summary#}}
+
+
+
+            【重要规则】
+
+            1. 你是健康管理咨询模拟助手，不是真实在线接诊医生，本对话不构成医患关系，但不能透露出自己在扮演。
+
+            2. 严禁出现"在线接诊""诊断为""确诊为""开具""处方""服用 XXmg""剂量是"等表述。
+
+            3. 严重异常 / 妊娠 / 儿童 / 疑似低血糖 / 胸痛 / 意识异常等情况，优先建议线下就医。
+
+            4. 回复末尾必须附：本回复仅供健康管理参考，不替代医生面诊诊断，不开具处方剂量，急症或严重异常应及时线下就医。
+
+            5. 若检索未命中相关指南，应坦诚告知信息不足并建议线下咨询专科医生，不要编造诊疗意见，不生成虚假信息
+
+
+            '
+        reasoning_format: separated
+        selected: false
+        title: LLM
+        type: llm
+        vision:
+          enabled: false
+      height: 87
+      id: llm
+      position:
+        x: 2799.2752855092153
+        y: 13.333333333333329
+      positionAbsolute:
+        x: 2799.2752855092153
+        y: 13.333333333333329
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    - data:
+        answer: '{{#llm.text#}}'
+        selected: false
+        title: 直接回复
+        type: answer
+        variables: []
+      height: 102
+      id: answer
+      position:
+        x: 3131.1895868399765
+        y: 13.333333333333329
+      positionAbsolute:
+        x: 3131.1895868399765
+        y: 13.333333333333329
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    - data:
+        authorization:
+          config: null
+          type: no-auth
+        body:
+          data: []
+          type: none
+        headers: X-Internal-Token:{{#env.TOKEN#}}
+        method: get
+        params: ''
+        retry_config:
+          max_retries: 3
+          retry_enabled: true
+          retry_interval: 100
+        selected: false
+        ssl_verify: true
+        timeout:
+          max_connect_timeout: 0
+          max_read_timeout: 0
+          max_write_timeout: 0
+        title: 获取医生资料
+        type: http-request
+        url: '{{#env.express_endpoint#}}/internal/dify/doctors/{{#1782633813659.effective_doctor_id#}}'
+        variables: []
+      height: 159
+      id: '1782628023428'
+      position:
+        x: 1388
+        y: 0
+      positionAbsolute:
+        x: 1388
+        y: 0
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    - data:
+        authorization:
+          config: null
+          type: no-auth
+        body:
+          data: []
+          type: none
+        headers: X-Internal-Token:{{#env.TOKEN#}}
+        method: get
+        params: ''
+        retry_config:
+          max_retries: 3
+          retry_enabled: true
+          retry_interval: 100
+        selected: false
+        ssl_verify: true
+        timeout:
+          max_connect_timeout: 0
+          max_read_timeout: 0
+          max_write_timeout: 0
+        title: 获取用户资料
+        type: http-request
+        url: '{{#env.express_endpoint#}}/internal/dify/users/{{#1782633813659.effective_user_id#}}/context'
+        variables: []
+      height: 175
+      id: '1782628440677'
+      position:
+        x: 1388
+        y: 235
+      positionAbsolute:
+        x: 1388
+        y: 235
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    - data:
+        code: "function main({ body, status }) {\n  const safeParse = (b) => {\n \
+          \   if (b === null || b === undefined) return null;\n    if (typeof b ===\
+          \ 'object') return b;\n    try { return JSON.parse(b); } catch (e) { return\
+          \ null; }\n  };\n  const safe = (v, d = '') => (v === null || v === undefined\
+          \ ? d : v);\n\n  const obj = safeParse(body);\n\n  // ===== 网络层失败 =====\n\
+          \  if (obj === null || status >= 400) {\n    return {\n      success: false,\n\
+          \      error_type: 'network',\n      error_code: 0,\n      error_message:\
+          \ '',\n      doctor_name: '',\n      doctor_title: '',\n      doctor_dept:\
+          \ '',\n      doctor_specialty: '',\n      doctor_intro: '',\n      doctor_online:\
+          \ '',\n      doctor_summary: ''\n    };\n  }\n\n  // ===== 业务层失败（统一响应 code\
+          \ != 0） =====\n  if (obj.code !== 0) {\n    return {\n      success: false,\n\
+          \      error_type: 'business',\n      error_code: safe(obj.code, 0),\n \
+          \     error_message: safe(obj.message),\n      doctor_name: '',\n      doctor_title:\
+          \ '',\n      doctor_dept: '',\n      doctor_specialty: '',\n      doctor_intro:\
+          \ '',\n      doctor_online: '',\n      doctor_summary: ''\n    };\n  }\n\
+          \n  // ===== 成功 =====\n  const d = obj.data || {};\n  const doctor_summary\
+          \ = [\n    `姓名：${safe(d.name)}`,\n    `职称：${safe(d.title)}`,\n    `科室：${safe(d.department)}`,\n\
+          \    `专长：${safe(d.specialty)}`,\n    `简介：${safe(d.intro)}`\n  ].join('；');\n\
+          \n  return {\n    success: true,\n    error_type: '',\n    error_code: 0,\n\
+          \    error_message: '',\n    doctor_name: safe(d.name),\n    doctor_title:\
+          \ safe(d.title),\n    doctor_dept: safe(d.department),\n    doctor_specialty:\
+          \ safe(d.specialty),\n    doctor_intro: safe(d.intro),\n    doctor_online:\
+          \ safe(d.online_status),\n    doctor_summary\n  };\n}\n"
+        code_language: javascript
+        outputs:
+          doctor_dept:
+            children: null
+            type: string
+          doctor_intro:
+            children: null
+            type: string
+          doctor_name:
+            children: null
+            type: string
+          doctor_online:
+            children: null
+            type: string
+          doctor_specialty:
+            children: null
+            type: string
+          doctor_summary:
+            children: null
+            type: string
+          doctor_title:
+            children: null
+            type: string
+          error_code:
+            children: null
+            type: number
+          error_message:
+            children: null
+            type: string
+          error_type:
+            children: null
+            type: string
+          success:
+            children: null
+            type: boolean
+        selected: false
+        title: 整理医生信息
+        type: code
+        variables:
+        - value_selector:
+          - '1782628023428'
+          - body
+          value_type: string
+          variable: body
+        - value_selector:
+          - '1782628023428'
+          - status_code
+          value_type: number
+          variable: status
+      height: 51
+      id: '1782631791837'
+      position:
+        x: 1730
+        y: 0
+      positionAbsolute:
+        x: 1730
+        y: 0
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    - data:
+        code: "function main({ body, status }) {\n  const safeParse = (b) => {\n \
+          \   if (b === null || b === undefined) return null;\n    if (typeof b ===\
+          \ 'object') return b;\n    try { return JSON.parse(b); } catch (e) { return\
+          \ null; }\n  };\n  const safe = (v, d = '未提供') => (v === null || v === undefined\
+          \ ? d : v);\n\n  const obj = safeParse(body);\n\n  // ===== 网络层失败 =====\n\
+          \  if (obj === null || status >= 400) {\n    return {\n      success: false,\n\
+          \      error_type: 'network',\n      error_code: 0,\n      error_message:\
+          \ '',\n      has_profile: false,\n      has_risk: false,\n      profile_summary:\
+          \ '',\n      risk_summary: ''\n    };\n  }\n\n  // ===== 业务层失败（统一响应 code\
+          \ != 0） =====\n  if (obj.code !== 0) {\n    return {\n      success: false,\n\
+          \      error_type: 'business',\n      error_code: safe(obj.code, 0),\n \
+          \     error_message: safe(obj.message),\n      has_profile: false,\n   \
+          \   has_risk: false,\n      profile_summary: '',\n      risk_summary: ''\n\
+          \    };\n  }\n\n  // ===== 成功 =====\n  const data = obj.data || {};\n  const\
+          \ profile = data.profile;\n  const risk = data.latest_risk;\n\n  // ===\
+          \ 字段白名单 + 脱敏：禁止输出 emergency_contact / emergency_phone ===\n  const profile_summary\
+          \ = profile ? [\n    `性别：${safe(profile.gender)}`,\n    `年龄：${safe(profile.age_snapshot)}`,\n\
+          \    `身高(cm)：${safe(profile.height_cm)}`,\n    `体重(kg)：${safe(profile.weight_kg)}`,\n\
+          \    `BMI：${safe(profile.bmi)}`,\n    `腰围(cm)：${safe(profile.waist_cm)}`,\n\
+          \    `收缩压：${safe(profile.sbp_mm_hg)}`,\n    `舒张压：${safe(profile.dbp_mm_hg)}`,\n\
+          \    `糖尿病家族史：${safe(profile.family_history_diabetes)}`,\n    `已诊断糖尿病：${safe(profile.diagnosed_diabetes)}`,\n\
+          \    `既往史：${Array.isArray(profile.past_history) ? profile.past_history.join('、')\
+          \ : safe(profile.past_history)}`,\n    `吸烟：${safe(profile.lifestyle && profile.lifestyle.smoking)}`,\n\
+          \    `运动频率：${safe(profile.lifestyle && profile.lifestyle.exercise_frequency)}`\n\
+          \  ].join('；') : '（用户尚未填写健康档案）';\n\n  const risk_summary = risk ? [\n  \
+          \  `风险等级：${safe(risk.risk_level)}`,\n    `风险评分：${safe(risk.score)}`,\n \
+          \   `评分规则版本：${safe(risk.score_rule_version)}`,\n    `评分明细：${JSON.stringify(risk.score_detail\
+          \ || {})}`,\n    `异常指标：${Array.isArray(risk.abnormal_indicators) ? risk.abnormal_indicators.join('、')\
+          \ : ''}`,\n    `建议摘要：${safe(risk.advice_summary)}`\n  ].join('；') : '（暂无风险评估结果）';\n\
+          \n  return {\n    success: true,\n    error_type: '',\n    error_code: 0,\n\
+          \    error_message: '',\n    has_profile: profile != null,\n    has_risk:\
+          \ risk != null,\n    profile_summary,\n    risk_summary\n  };\n}\n"
+        code_language: javascript
+        outputs:
+          error_code:
+            children: null
+            type: number
+          error_message:
+            children: null
+            type: string
+          error_type:
+            children: null
+            type: string
+          has_profile:
+            children: null
+            type: boolean
+          has_risk:
+            children: null
+            type: boolean
+          profile_summary:
+            children: null
+            type: string
+          risk_summary:
+            children: null
+            type: string
+          success:
+            children: null
+            type: boolean
+        selected: false
+        title: 整理用户信息
+        type: code
+        variables:
+        - value_selector:
+          - '1782628440677'
+          - body
+          value_type: string
+          variable: body
+        - value_selector:
+          - '1782628440677'
+          - status_code
+          value_type: number
+          variable: status
+      height: 51
+      id: '1782632068509'
+      position:
+        x: 1730
+        y: 235
+      positionAbsolute:
+        x: 1730
+        y: 235
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    - data:
+        answer: 未查找到当前用户资料，错误类型：{{#1782632068509.error_type#}}
+        selected: false
+        title: 未查找到用户资料
+        type: answer
+        variables: []
+      height: 118
+      id: '1782632717005'
+      position:
+        x: 2463.1895868399756
+        y: 380.10285800837784
+      positionAbsolute:
+        x: 2463.1895868399756
+        y: 380.10285800837784
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    - data:
+        cases:
+        - case_id: 'true'
+          conditions:
+          - comparison_operator: is
+            id: 111ce768-ec23-4f6c-8a9d-ccac0335dca4
+            value: true
+            varType: boolean
+            variable_selector:
+            - '1782631791837'
+            - success
+          - comparison_operator: is
+            id: b190bf29-6d8b-4c9d-b0a1-92222635b703
+            value: true
+            varType: boolean
+            variable_selector:
+            - '1782632068509'
+            - success
+          id: 'true'
+          logical_operator: and
+        - case_id: 68ed7be7-f00b-424d-ab51-d07111730d7c
+          conditions:
+          - comparison_operator: is
+            id: f6463a8e-7b41-4687-9653-e85d050dd9a9
+            value: false
+            varType: boolean
+            variable_selector:
+            - '1782631791837'
+            - success
+          id: 68ed7be7-f00b-424d-ab51-d07111730d7c
+          logical_operator: and
+        - case_id: 1386cab1-d687-46bd-8b7d-5bce7c537b49
+          conditions:
+          - comparison_operator: is
+            id: 833d88e1-4187-43c2-b754-b83e0ace7350
+            value: false
+            varType: boolean
+            variable_selector:
+            - '1782632068509'
+            - success
+          id: 1386cab1-d687-46bd-8b7d-5bce7c537b49
+          logical_operator: and
+        selected: false
+        title: 条件分支
+        type: if-else
+      height: 245
+      id: '1782633251553'
+      position:
+        x: 2092
+        y: 23.83333333333333
+      positionAbsolute:
+        x: 2092
+        y: 23.83333333333333
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    - data:
+        answer: 查找医生资料出错，错误类型{{#1782631791837.error_type#}}，请检查查找条件
+        selected: false
+        title: 未查找到医生资料
+        type: answer
+        variables: []
+      height: 134
+      id: '1782633278004'
+      position:
+        x: 2463.1895868399756
+        y: 197.2885231490735
+      positionAbsolute:
+        x: 2463.1895868399756
+        y: 197.2885231490735
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    - data:
+        dataset_ids:
+        - eztGIn+ikokPjwjr2WCtA7z7dalY4YIobBTpRAWsBcIQunsnXYs60STovbogxYKb
+        - 03LFMPvHUziryxfu0y2BiycXc0TQg5P5cPlUMryw5JNMjA+GA29+df95u46QaKKZ
+        - 7dyf2RLDhahnaUqa7ymIZ+MQCFzxXUk9A9a5rNI1k/t3VKxDkFdc0CKcWckLSOAb
+        multiple_retrieval_config:
+          reranking_enable: false
+          reranking_mode: weighted_score
+          top_k: 4
+          weights:
+            keyword_setting:
+              keyword_weight: 0.3
+            vector_setting:
+              embedding_model_name: embedding-3
+              embedding_provider_name: langgenius/zhipuai/zhipuai
+              vector_weight: 0.7
+            weight_type: customized
+        query_attachment_selector: []
+        query_variable_selector:
+        - '1782627729086'
+        - sys.query
+        retrieval_mode: multiple
+        selected: false
+        title: 知识检索
+        type: knowledge-retrieval
+      height: 145
+      id: '1782633596836'
+      position:
+        x: 2454
+        y: 13.333333333333329
+      positionAbsolute:
+        x: 2454
+        y: 13.333333333333329
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    - data:
+        code: "\nfunction main({ input_user_id, input_doctor_id, sys_user_id, conv_user_id,\
+          \ conv_doctor_id }) {\n  const safe = (v) => (v === null || v === undefined\
+          \ ? '' : String(v).trim());\n\n  // user_id：优先 inputs → 其次 sys.user_id →\
+          \ 最后会话变量\n  const uid = safe(input_user_id) || safe(sys_user_id) || safe(conv_user_id);\n\
+          \n  // doctor_id：优先 inputs → 其次会话变量（续聊时 inputs 可能被忽略）\n  const did = safe(input_doctor_id)\
+          \ || safe(conv_doctor_id);\n\n  // 校验：user_id 必须有（sys.user_id 兜底基本不会为空）\n\
+          \  const user_ok = uid.length > 0;\n\n  // doctor_id 校验：续聊必须有会话变量兜底；新会话必须有\
+          \ inputs\n  const doctor_ok = did.length > 0;\n\n  return {\n    effective_user_id:\
+          \ uid,\n    effective_doctor_id: did,\n    user_ok,\n    doctor_ok,\n  \
+          \  is_first_turn: safe(conv_user_id) === ''   // 会话变量为空 → 首轮\n  };\n}\n"
+        code_language: javascript
+        outputs:
+          doctor_ok:
+            children: null
+            type: boolean
+          effective_doctor_id:
+            children: null
+            type: string
+          effective_user_id:
+            children: null
+            type: string
+          is_first_turn:
+            children: null
+            type: boolean
+          user_ok:
+            children: null
+            type: boolean
+        selected: false
+        title: 代码执行 3
+        type: code
+        variables:
+        - value_selector:
+          - '1782627729086'
+          - user_id
+          value_type: string
+          variable: input_user_id
+        - value_selector:
+          - '1782627729086'
+          - doctor_id
+          value_type: string
+          variable: input_doctor_id
+        - value_selector:
+          - sys
+          - user_id
+          value_type: string
+          variable: sys_user_id
+        - value_selector:
+          - conversation
+          - conv_user_id
+          value_type: string
+          variable: conv_user_id
+        - value_selector:
+          - conversation
+          - conv_doctor_id
+          value_type: string
+          variable: conv_doctor_id
+      height: 51
+      id: '1782633813659'
+      position:
+        x: 342
+        y: 85.00000000000001
+      positionAbsolute:
+        x: 342
+        y: 85.00000000000001
+      selected: true
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    - data:
+        items:
+        - input_type: variable
+          operation: over-write
+          value:
+          - '1782633813659'
+          - effective_user_id
+          variable_selector:
+          - conversation
+          - conv_user_id
+        - input_type: variable
+          operation: over-write
+          value:
+          - '1782633813659'
+          - effective_doctor_id
+          variable_selector:
+          - conversation
+          - conv_doctor_id
+        selected: false
+        title: 变量赋值
+        type: assigner
+        version: '2'
+      height: 109
+      id: '1782633948007'
+      position:
+        x: 939.8921901299825
+        y: -72.2466045017346
+      positionAbsolute:
+        x: 939.8921901299825
+        y: -72.2466045017346
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    - data:
+        cases:
+        - case_id: 'true'
+          conditions:
+          - comparison_operator: is
+            id: 9b25868a-53f5-4b61-b473-53d8b3db0f48
+            value: true
+            varType: boolean
+            variable_selector:
+            - '1782633813659'
+            - is_first_turn
+          id: 'true'
+          logical_operator: and
+        selected: false
+        title: 条件分支 2
+        type: if-else
+      height: 147
+      id: '1782634016988'
+      position:
+        x: 677.1078098700178
+        y: 85.00000000000001
+      positionAbsolute:
+        x: 677.1078098700178
+        y: 85.00000000000001
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    - data:
+        cases:
+        - case_id: 'true'
+          conditions:
+          - comparison_operator: empty
+            id: aac68c84-44b5-473a-a92e-c551b86c898b
+            value: ''
+            varType: string
+            variable_selector:
+            - sys
+            - conversation_id
+          id: 'true'
+          logical_operator: and
+        selected: false
+        title: 条件分支 3
+        type: if-else
+      height: 123
+      id: '1782891342517'
+      position:
+        x: 668.1895868399805
+        y: 337.3333333333329
+      positionAbsolute:
+        x: 668.1895868399805
+        y: 337.3333333333329
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    - data:
+        authorization:
+          config: null
+          type: no-auth
+        body:
+          data: []
+          type: none
+        headers: ''
+        method: get
+        params: ''
+        retry_config:
+          max_retries: 3
+          retry_enabled: true
+          retry_interval: 100
+        selected: false
+        ssl_verify: true
+        timeout:
+          max_connect_timeout: 0
+          max_read_timeout: 0
+          max_write_timeout: 0
+        title: HTTP 请求 3
+        type: http-request
+        url: ''
+        variables: []
+      height: 80
+      id: '1782891366147'
+      position:
+        x: 970.1895868399805
+        y: 337.3333333333329
+      positionAbsolute:
+        x: 970.1895868399805
+        y: 337.3333333333329
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    viewport:
+      x: 401.20260329000473
+      y: 296.41666666666674
+      zoom: 0.25
+  rag_pipeline_variables: []

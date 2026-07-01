@@ -1,0 +1,751 @@
+app:
+  description: '根据输入的user_id, action和params变量选择进行不同的HTTP请求，获取所需数据（用户上下文、首页摘要、打卡摘要、文章推荐）的工具。
+
+
+    params变量可填入period_start、period_end、include_latest_risk、include_latest_plan'
+  icon: 🤖
+  icon_background: '#FFEAD5'
+  icon_type: emoji
+  mode: workflow
+  name: 数据上下文工作流
+  use_icon_as_answer_icon: false
+dependencies: []
+kind: app
+version: 0.6.0
+workflow:
+  conversation_variables: []
+  environment_variables:
+  - description: ''
+    id: d9494dad-dd7b-42eb-a3ef-7ebc2affe43e
+    name: TOKEN
+    selector:
+    - env
+    - TOKEN
+    value: H1b67KJR9MBFQXfmO8tJ8REVa6sv1zecJr3bgmhYcXSgVZmv6bHYmyD97qy9yx20
+    value_type: string
+  - description: ''
+    id: d17979b6-ceb6-4c9d-87f3-f9242e4a44b5
+    name: express_endpoint
+    selector:
+    - env
+    - express_endpoint
+    value: http://172.17.0.1:8080
+    value_type: string
+  features:
+    file_upload:
+      allowed_file_extensions:
+      - .JPG
+      - .JPEG
+      - .PNG
+      - .GIF
+      - .WEBP
+      - .SVG
+      allowed_file_types:
+      - image
+      allowed_file_upload_methods:
+      - local_file
+      - remote_url
+      enabled: false
+      fileUploadConfig:
+        attachment_image_file_size_limit: 2
+        audio_file_size_limit: 50
+        batch_count_limit: 5
+        file_size_limit: 15
+        file_upload_limit: 20
+        image_file_batch_limit: 10
+        image_file_size_limit: 10
+        single_chunk_attachment_limit: 10
+        video_file_size_limit: 100
+        workflow_file_upload_limit: 10
+      image:
+        enabled: false
+        number_limits: 3
+        transfer_methods:
+        - local_file
+        - remote_url
+      number_limits: 3
+    opening_statement: ''
+    retriever_resource:
+      enabled: true
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: start
+        targetType: code
+      id: 1782299829167-source-1782300207368-target
+      selected: false
+      source: '1782299829167'
+      sourceHandle: source
+      target: '1782300207368'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: code
+        targetType: if-else
+      id: 1782300207368-source-1782300817691-target
+      selected: false
+      source: '1782300207368'
+      sourceHandle: source
+      target: '1782300817691'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: if-else
+        targetType: end
+      id: 1782300817691-false-1782300853727-target
+      selected: false
+      source: '1782300817691'
+      sourceHandle: 'false'
+      target: '1782300853727'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: if-else
+        targetType: if-else
+      id: 1782300817691-true-1782301055404-target
+      selected: false
+      source: '1782300817691'
+      sourceHandle: 'true'
+      target: '1782301055404'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: if-else
+        targetType: http-request
+      id: 1782301055404-true-1782301266837-target
+      selected: false
+      source: '1782301055404'
+      sourceHandle: 'true'
+      target: '1782301266837'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: if-else
+        targetType: http-request
+      id: 1782301055404-0d1c86c9-6cb4-441b-981e-149d8bf0d3de-1782303450207-target
+      source: '1782301055404'
+      sourceHandle: 0d1c86c9-6cb4-441b-981e-149d8bf0d3de
+      target: '1782303450207'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: if-else
+        targetType: http-request
+      id: 1782301055404-8c63882a-29b1-4876-9ae5-ec8f9416f216-1782303581292-target
+      source: '1782301055404'
+      sourceHandle: 8c63882a-29b1-4876-9ae5-ec8f9416f216
+      target: '1782303581292'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: http-request
+        targetType: code
+      id: 1782301266837-source-1782304015322-target
+      source: '1782301266837'
+      sourceHandle: source
+      target: '1782304015322'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: http-request
+        targetType: code
+      id: 1782303450207-source-1782304015322-target
+      source: '1782303450207'
+      sourceHandle: source
+      target: '1782304015322'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: http-request
+        targetType: code
+      id: 1782303581292-source-1782304015322-target
+      source: '1782303581292'
+      sourceHandle: source
+      target: '1782304015322'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: http-request
+        targetType: code
+      id: 1782303926917-source-1782304015322-target
+      source: '1782303926917'
+      sourceHandle: source
+      target: '1782304015322'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: code
+        targetType: end
+      id: 1782304015322-source-1782304305232-target
+      source: '1782304015322'
+      sourceHandle: source
+      target: '1782304305232'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: if-else
+        targetType: http-request
+      id: 1782301055404-a7f63f12-6fcc-4388-8163-72435e1617ac-1782303926917-target
+      source: '1782301055404'
+      sourceHandle: a7f63f12-6fcc-4388-8163-72435e1617ac
+      target: '1782303926917'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    nodes:
+    - data:
+        selected: false
+        title: 用户输入
+        type: start
+        variables:
+        - default: ''
+          hint: ''
+          label: action
+          max_length: 256
+          options: []
+          placeholder: ''
+          required: true
+          type: text-input
+          variable: action
+        - default: ''
+          hint: ''
+          label: user_id
+          max_length: 256
+          options: []
+          placeholder: ''
+          required: true
+          type: text-input
+          variable: user_id
+        - default: ''
+          hint: ''
+          label: params
+          max_length: 4096
+          options: []
+          placeholder: ''
+          required: false
+          type: json_object
+          variable: params
+      height: 161
+      id: '1782299829167'
+      position:
+        x: 98
+        y: 230
+      positionAbsolute:
+        x: 98
+        y: 230
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        code: "import json\n\ndef main(action: str, user_id: str, params: dict) ->\
+          \ dict:\n    # action 白名单\n    valid_actions = [\"profile_get\", \"home_summary\"\
+          , \"checkin_summary\", \"article_recommend\"]\n    if action not in valid_actions:\n\
+          \        return {\n            \"valid\": False,\n            \"error\"\
+          : f\"不支持的 action: {action}\",\n            \"action\": \"\",\n         \
+          \   \"user_id\": \"\",\n            \"period_start\": \"\",\n          \
+          \  \"period_end\": \"\",\n            \"include_latest_risk\": False,\n\
+          \            \"include_latest_plan\": False\n        }\n\n    # user_id\
+          \ 校验\n    if not user_id or not user_id.strip():\n        return {\n   \
+          \         \"valid\": False,\n            \"error\": \"user_id 不能为空\",\n\
+          \            \"action\": \"\",\n            \"user_id\": \"\",\n       \
+          \     \"period_start\": \"\",\n            \"period_end\": \"\",\n     \
+          \       \"include_latest_risk\": False,\n            \"include_latest_plan\"\
+          : False\n        }\n\n    # 安全提取各个参数，缺失时给默认空值\n    period_start = \"\"\n\
+          \    period_end = \"\"\n    include_latest_risk = False\n    include_latest_plan\
+          \ = False\n\n    if params:\n        period_start = str(params.get(\"period_start\"\
+          , \"\") or \"\")\n        period_end = str(params.get(\"period_end\", \"\
+          \") or \"\")\n        include_latest_risk = bool(params.get(\"include_latest_risk\"\
+          , False))\n        include_latest_plan = bool(params.get(\"include_latest_plan\"\
+          , False))\n\n    return {\n        \"valid\": True,\n        \"error\":\
+          \ \"\",\n        \"action\": action,\n        \"user_id\": user_id.strip(),\n\
+          \        \"period_start\": period_start,\n        \"period_end\": period_end,\n\
+          \        \"include_latest_risk\": include_latest_risk,\n        \"include_latest_plan\"\
+          : include_latest_plan\n    }\n\n"
+        code_language: python3
+        outputs:
+          action:
+            children: null
+            type: string
+          error:
+            children: null
+            type: string
+          include_latest_plan:
+            children: null
+            type: boolean
+          include_latest_risk:
+            children: null
+            type: boolean
+          period_end:
+            children: null
+            type: string
+          period_start:
+            children: null
+            type: string
+          user_id:
+            children: null
+            type: string
+          valid:
+            children: null
+            type: boolean
+        selected: false
+        title: 参数校验
+        type: code
+        variables:
+        - value_selector:
+          - '1782299829167'
+          - action
+          value_type: string
+          variable: action
+        - value_selector:
+          - '1782299829167'
+          - user_id
+          value_type: string
+          variable: user_id
+        - value_selector:
+          - '1782299829167'
+          - params
+          value_type: object
+          variable: params
+      height: 52
+      id: '1782300207368'
+      position:
+        x: 464
+        y: 251
+      positionAbsolute:
+        x: 464
+        y: 251
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        cases:
+        - case_id: 'true'
+          conditions:
+          - comparison_operator: is
+            id: 1559d868-845e-48ff-b9dc-1f31dfb7ac05
+            value: true
+            varType: boolean
+            variable_selector:
+            - '1782300207368'
+            - valid
+          id: 'true'
+          logical_operator: and
+        selected: false
+        title: 校验结果
+        type: if-else
+      height: 124
+      id: '1782300817691'
+      position:
+        x: 798
+        y: 251
+      positionAbsolute:
+        x: 798
+        y: 251
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        outputs:
+        - value_selector:
+          - '1782300207368'
+          - error
+          value_type: string
+          variable: error
+        selected: false
+        title: END(failed)
+        type: end
+      height: 88
+      id: '1782300853727'
+      position:
+        x: 1217
+        y: 554
+      positionAbsolute:
+        x: 1217
+        y: 554
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        cases:
+        - case_id: 'true'
+          conditions:
+          - comparison_operator: is
+            id: 4a9b4164-f865-4ccb-a9bb-5e0123c91fb7
+            value: profile_get
+            varType: string
+            variable_selector:
+            - '1782299829167'
+            - action
+          id: 'true'
+          logical_operator: and
+        - case_id: 0d1c86c9-6cb4-441b-981e-149d8bf0d3de
+          conditions:
+          - comparison_operator: is
+            id: cb27b6fb-a37f-4ca4-ac08-4361e9b2a5e2
+            value: home_summary
+            varType: string
+            variable_selector:
+            - '1782299829167'
+            - action
+          id: 0d1c86c9-6cb4-441b-981e-149d8bf0d3de
+          logical_operator: and
+        - case_id: 8c63882a-29b1-4876-9ae5-ec8f9416f216
+          conditions:
+          - comparison_operator: is
+            id: 79283781-7794-4ebf-81bd-10b2a534ad67
+            value: checkin_summary
+            varType: string
+            variable_selector:
+            - '1782299829167'
+            - action
+          id: 8c63882a-29b1-4876-9ae5-ec8f9416f216
+          logical_operator: and
+        - case_id: a7f63f12-6fcc-4388-8163-72435e1617ac
+          conditions:
+          - comparison_operator: is
+            id: 13546e5d-42aa-4055-983f-5b26575ee745
+            value: article_recommend
+            varType: string
+            variable_selector:
+            - '1782299829167'
+            - action
+          id: a7f63f12-6fcc-4388-8163-72435e1617ac
+          logical_operator: and
+        selected: false
+        title: 用户操作类型分支
+        type: if-else
+      height: 364
+      id: '1782301055404'
+      position:
+        x: 1114
+        y: 10
+      positionAbsolute:
+        x: 1114
+        y: 10
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        authorization:
+          config: null
+          type: no-auth
+        body:
+          data: []
+          type: none
+        headers: X-Internal-Token:{{#env.TOKEN#}}
+        method: get
+        params: ''
+        retry_config:
+          max_retries: 3
+          retry_enabled: true
+          retry_interval: 100
+        selected: true
+        ssl_verify: true
+        timeout:
+          max_connect_timeout: 0
+          max_read_timeout: 0
+          max_write_timeout: 0
+        title: HTTP 获取用户上下文
+        type: http-request
+        url: '{{#env.express_endpoint#}}/internal/dify/users{{#1782299829167.user_id#}}/context'
+        variables: []
+      height: 175
+      id: '1782301266837'
+      position:
+        x: 1479
+        y: -115
+      positionAbsolute:
+        x: 1479
+        y: -115
+      selected: true
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        authorization:
+          config: null
+          type: no-auth
+        body:
+          data: []
+          type: none
+        headers: X-Internal-Token:{{#env.TOKEN#}}
+        method: get
+        params: ''
+        retry_config:
+          max_retries: 3
+          retry_enabled: true
+          retry_interval: 100
+        selected: false
+        ssl_verify: true
+        timeout:
+          max_connect_timeout: 0
+          max_read_timeout: 0
+          max_write_timeout: 0
+        title: HTTP 获取首页摘要
+        type: http-request
+        url: '{{#env.express_endpoint#}}/internal/dify/home-summary'
+        variables: []
+      height: 140
+      id: '1782303450207'
+      position:
+        x: 1479
+        y: 77
+      positionAbsolute:
+        x: 1479
+        y: 77
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        authorization:
+          config: null
+          type: no-auth
+        body:
+          data: []
+          type: none
+        headers: X-Internal-Token:{{#env.TOKEN#}}
+        method: get
+        params: 'period_start:{{#1782300207368.period_start#}}
+
+          period_end:{{#1782300207368.period_end#}}'
+        retry_config:
+          max_retries: 3
+          retry_enabled: true
+          retry_interval: 100
+        selected: false
+        ssl_verify: true
+        timeout:
+          max_connect_timeout: 0
+          max_read_timeout: 0
+          max_write_timeout: 0
+        title: HTTP 获取打卡摘要
+        type: http-request
+        url: '{{#env.express_endpoint#}}/internal/dify/users{{#1782300207368.user_id#}}/checkins/summary'
+        variables: []
+      height: 175
+      id: '1782303581292'
+      position:
+        x: 1479
+        y: 251
+      positionAbsolute:
+        x: 1479
+        y: 251
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        authorization:
+          config: null
+          type: no-auth
+        body:
+          data: []
+          type: none
+        headers: X-Internal-Token:{{#env.TOKEN#}}
+        method: get
+        params: ''
+        retry_config:
+          max_retries: 3
+          retry_enabled: true
+          retry_interval: 100
+        selected: false
+        ssl_verify: true
+        timeout:
+          max_connect_timeout: 0
+          max_read_timeout: 0
+          max_write_timeout: 0
+        title: HTTP 获取文章推荐
+        type: http-request
+        url: '{{#env.express_endpoint#}}/internal/dify/articles/recommend'
+        variables: []
+      height: 140
+      id: '1782303926917'
+      position:
+        x: 1479
+        y: 464
+      positionAbsolute:
+        x: 1479
+        y: 464
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        code: "def main(\n    http_a: str,   # 节点A的输出（可能为空）\n    http_b: str,   #\
+          \ 节点B的输出（可能为空）\n    http_c: str,   # 节点C的输出（可能为空）\n    http_d: str,   #\
+          \ 节点D的输出（可能为空）\n    action: str\n) -> dict:\n    import json\n\n    # 根据\
+          \ action 选择对应的 HTTP 响应（只有一个非空）\n    response_map = {\n        \"profile_get\"\
+          : http_a,\n        \"home_summary\": http_b,\n        \"checkin_summary\"\
+          : http_c,\n        \"article_recommend\": http_d\n    }\n\n    http_response\
+          \ = response_map.get(action, \"\")\n\n    if not http_response:\n      \
+          \  return {\"ok\": False, \"action\": action, \"data\": None, \"warnings\"\
+          : [\"未获取到 HTTP 响应\"]}\n\n    try:\n        body = json.loads(http_response)\
+          \ if isinstance(http_response, str) else http_response\n    except:\n  \
+          \      return {\"ok\": False, \"action\": action, \"data\": None, \"warnings\"\
+          : [\"HTTP 响应解析失败\"]}\n\n    if body.get(\"code\") != 0:\n        return\
+          \ {\n            \"ok\": False,\n            \"action\": action,\n     \
+          \       \"data\": None,\n            \"warnings\": [f\"接口错误: {body.get('message',\
+          \ '未知')}\"]\n        }\n\n    data = body.get(\"data\")\n\n    # 敏感字段裁剪\n\
+          \    sensitive_fields = [\"emergency_contact\", \"emergency_phone\", \"\
+          allergy\"]\n    if action == \"profile_get\" and data:\n        profile\
+          \ = data.get(\"profile\")\n        if profile:\n            for field in\
+          \ sensitive_fields:\n                profile.pop(field, None)\n\n    return\
+          \ {\"ok\": True, \"action\": action, \"data\": data, \"warnings\": []}\n"
+        code_language: python3
+        outputs:
+          action:
+            children: null
+            type: string
+          data:
+            children: null
+            type: object
+          ok:
+            children: null
+            type: boolean
+          warnings:
+            children: null
+            type: array[string]
+        selected: false
+        title: 响应体信息处理节点
+        type: code
+        variables:
+        - value_selector:
+          - '1782301266837'
+          - body
+          value_type: string
+          variable: http_a
+        - value_selector:
+          - '1782303450207'
+          - body
+          value_type: string
+          variable: http_b
+        - value_selector:
+          - '1782303581292'
+          - body
+          value_type: string
+          variable: http_c
+        - value_selector:
+          - '1782303926917'
+          - body
+          value_type: string
+          variable: http_d
+        - value_selector:
+          - '1782300207368'
+          - action
+          value_type: string
+          variable: action
+      height: 52
+      id: '1782304015322'
+      position:
+        x: 1841.4000091552734
+        y: 108
+      positionAbsolute:
+        x: 1841.4000091552734
+        y: 108
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        outputs:
+        - value_selector:
+          - '1782304015322'
+          - ok
+          value_type: boolean
+          variable: ok
+        - value_selector:
+          - '1782304015322'
+          - action
+          value_type: string
+          variable: action
+        - value_selector:
+          - '1782304015322'
+          - data
+          value_type: object
+          variable: data
+        - value_selector:
+          - '1782304015322'
+          - warnings
+          value_type: array[string]
+          variable: warnings
+        selected: false
+        title: END(success)
+        type: end
+      height: 167
+      id: '1782304305232'
+      position:
+        x: 2143.4000091552734
+        y: 108
+      positionAbsolute:
+        x: 2143.4000091552734
+        y: 108
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    viewport:
+      x: -1057.444442243392
+      y: 137.27164533875703
+      zoom: 0.846745312362528
+  rag_pipeline_variables: []

@@ -1,0 +1,533 @@
+app:
+  description: 体检报告解读工作流
+  icon: 🤖
+  icon_background: '#FFEAD5'
+  icon_type: emoji
+  mode: workflow
+  name: 体检报告解读工作流
+  use_icon_as_answer_icon: false
+dependencies:
+- current_identifier: null
+  type: marketplace
+  value:
+    marketplace_plugin_unique_identifier: langgenius/deepseek:0.0.17@f7a5c1d222d17ee419b17a80d6e4923838fe93788dc724a3af73fbc6990b3a32
+    version: null
+- current_identifier: null
+  type: marketplace
+  value:
+    marketplace_plugin_unique_identifier: langgenius/zhipuai:0.0.30@26018901445dfce76077e57c38582b44d9a91ddc4ff86370e9a769cf8e7af5b5
+    version: null
+kind: app
+version: 0.6.0
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      allowed_file_extensions:
+      - .JPG
+      - .JPEG
+      - .PNG
+      - .GIF
+      - .WEBP
+      - .SVG
+      allowed_file_types:
+      - image
+      allowed_file_upload_methods:
+      - local_file
+      - remote_url
+      enabled: false
+      fileUploadConfig:
+        attachment_image_file_size_limit: 2
+        audio_file_size_limit: 50
+        batch_count_limit: 5
+        file_size_limit: 15
+        file_upload_limit: 20
+        image_file_batch_limit: 10
+        image_file_size_limit: 10
+        single_chunk_attachment_limit: 10
+        video_file_size_limit: 100
+        workflow_file_upload_limit: 10
+      image:
+        enabled: false
+        number_limits: 3
+        transfer_methods:
+        - local_file
+        - remote_url
+      number_limits: 3
+    opening_statement: ''
+    retriever_resource:
+      enabled: true
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: start
+        targetType: llm
+      id: 1782629127052-source-1782630097734-target
+      selected: false
+      source: '1782629127052'
+      sourceHandle: source
+      target: '1782630097734'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: llm
+        targetType: llm
+      id: 1782630097734-source-1782630701007-target
+      selected: false
+      source: '1782630097734'
+      sourceHandle: source
+      target: '1782630701007'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: llm
+        targetType: knowledge-retrieval
+      id: 1782630097734-source-1782630748963-target
+      selected: false
+      source: '1782630097734'
+      sourceHandle: source
+      target: '1782630748963'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: knowledge-retrieval
+        targetType: llm
+      id: 1782630748963-source-1782630701007-target
+      selected: false
+      source: '1782630748963'
+      sourceHandle: source
+      target: '1782630701007'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: llm
+        targetType: end
+      id: 1782630701007-source-1782630106064-target
+      source: '1782630701007'
+      sourceHandle: source
+      target: '1782630106064'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    nodes:
+    - data:
+        selected: false
+        title: 用户输入
+        type: start
+        variables:
+        - default: ''
+          hint: ''
+          label: user_id
+          options: []
+          placeholder: ''
+          required: true
+          type: number
+          variable: user_id
+        - default: ''
+          hint: ''
+          label: report_file_id
+          options: []
+          placeholder: ''
+          required: true
+          type: number
+          variable: report_file_id
+        - default: ''
+          hint: ''
+          label: report_text
+          options: []
+          placeholder: ''
+          required: true
+          type: text-input
+          variable: report_text
+      height: 160
+      id: '1782629127052'
+      position:
+        x: 36
+        y: 199
+      positionAbsolute:
+        x: 36
+        y: 199
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        model:
+          completion_params:
+            temperature: 0.7
+          mode: chat
+          name: deepseek-v4-pro
+          provider: langgenius/deepseek/deepseek
+        prompt_config:
+          jinja2_variables: []
+        prompt_template:
+        - edition_type: basic
+          id: 27644949-807f-4dd2-ad87-1f7f058fb1e7
+          role: system
+          text: '你是一个医学检验指标提取与知识检索查询生成器。
+
+
+            请从用户提供的体检报告、化验报告或健康描述中，提取所有明确出现的医学指标，并生成适合知识库检索的查询文本。
+
+
+            处理规则：
+
+
+            1. 提取所有明确出现的医学指标。
+
+            2. indicators 数组中的每个元素只包含一个指标。
+
+            3. 每个指标格式统一为：
+
+            指标名称：指标值 单位
+
+            4. 保留原文中的数值、单位、百分号、正负号、不等号和范围。
+
+            5. 原文没有单位时，不得自行补充单位。
+
+            6. 可以提取数值型和结果型指标，例如：
+
+            - 空腹血糖：6.4 mmol/L
+
+            - 糖化血红蛋白：6.1%
+
+            - 尿蛋白：阴性
+
+            7. 不提取姓名、年龄、性别、日期、医院、科室、诊断结论、症状描述和生活建议。
+
+            8. 不判断指标是否正常，不进行医学诊断。
+
+            9. 按照指标在原文中的出现顺序输出。
+
+            10. 将所有提取到的指标拼接为 retrieval_query，指标之间使用中文分号“；”分隔。
+
+            11. retrieval_query 中不要添加“请查询”“请分析”等无关内容。
+
+            12. 如果没有提取到任何指标：
+
+            - indicators 返回空数组
+
+            - retrieval_query 返回空字符串
+
+            13. 必须严格按照结构化输出返回，不得输出解释、Markdown、标题或其他内容。
+
+
+            报告文本：
+
+
+            <report_text>
+
+            {{#1782629127052.report_text#}}
+
+            </report_text>'
+        selected: false
+        structured_output:
+          schema:
+            additionalProperties: false
+            properties:
+              indicators:
+                description: 从报告文本中提取的医学指标数组
+                items:
+                  description: 单个指标，格式为：指标名称：指标值 单位
+                  type: string
+                type: array
+              retrieval_query:
+                description: 用于知识库检索的查询文本，多个指标之间使用中文分号分隔
+                type: string
+            required:
+            - indicators
+            - retrieval_query
+            type: object
+        structured_output_enabled: true
+        title: 参数提取
+        type: llm
+        vision:
+          enabled: false
+      height: 87
+      id: '1782630097734'
+      position:
+        x: 355
+        y: 220
+      positionAbsolute:
+        x: 355
+        y: 220
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    - data:
+        outputs:
+        - value_selector:
+          - '1782630701007'
+          - structured_output
+          - status
+          value_type: object
+          variable: status
+        - value_selector:
+          - '1782630701007'
+          - structured_output
+          - indicators
+          value_type: object
+          variable: indicators
+        - value_selector:
+          - '1782630701007'
+          - structured_output
+          - summary
+          value_type: object
+          variable: summary
+        - value_selector:
+          - '1782630701007'
+          - structured_output
+          - advice
+          value_type: object
+          variable: advice
+        - value_selector:
+          - '1782630701007'
+          - structured_output
+          - confirm_required
+          value_type: object
+          variable: confirm_required
+        selected: false
+        title: 输出
+        type: end
+      height: 191
+      id: '1782630106064'
+      position:
+        x: 1353
+        y: 285
+      positionAbsolute:
+        x: 1353
+        y: 285
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    - data:
+        context:
+          enabled: true
+          variable_selector:
+          - '1782630748963'
+          - result
+        model:
+          completion_params:
+            temperature: 0.7
+          mode: chat
+          name: deepseek-v4-pro
+          provider: langgenius/deepseek/deepseek
+        prompt_config:
+          jinja2_variables: []
+        prompt_template:
+        - edition_type: basic
+          id: fa5a12e8-508b-4cf3-877f-cffdee55e243
+          jinja2_text: "你是一个医学检验指标分析助手。\r\n\r\n请根据上游提取的医学指标和知识库检索结果，对每个指标进行分析。\r\n\
+            \r\n提取到的医学指标：\r\n\r\n<indicators>\r\n<<>>\r\n</indicators>\r\n\r\n知识库检索结果：\r\
+            \n\r\n<knowledge>\r\n\r\n</knowledge>\r\n\r\n处理要求：\r\n\r\n1. 必须分析输入中的每个指标，不得遗漏，不得增加原文中不存在的指标。\r\
+            \n2. 优先依据知识库中的参考范围和解释判断指标状态。\r\n3. 指标状态只能为：正常、偏高、偏低、异常、未知。\r\n4. 知识库信息不足时，将指标状态设置为“未知”，不得编造参考范围。\r\
+            \n5. value 必须是数字类型，不得包含单位。\r\n6. unit 单独保存指标单位；原文没有单位时返回空字符串。\r\n7. explanation\
+            \ 简要说明指标含义和需要关注的方向，不得进行确定性疾病诊断。\r\n8. summary 对所有指标进行总体概括。\r\n9. advice\
+            \ 输出2至4条低风险、可执行的建议。\r\n10. 不得提供具体药物、药物剂量、停药、换药或治疗方案。\r\n11. 顶层 status\
+            \ 固定为 pending_confirm。\r\n12. confirm_required 固定为 true。\r\n13. 严格按照结构化输出格式返回，不得输出额外内容。\r\
+            \n"
+          role: system
+          text: '你是一个医学检验指标分析助手。
+
+
+            请根据上游提取的医学指标和知识库检索结果，对每个指标进行分析。
+
+
+            提取到的医学指标：
+
+
+            {{#1782630097734.structured_output#}}
+
+
+            知识库检索结果：
+
+
+            {{#context#}}
+
+
+            处理要求：
+
+
+            1. 必须分析输入中的每个指标，不得遗漏，也不得增加输入中不存在的指标。
+
+            2. 优先依据知识库中的参考范围和解释判断指标状态。
+
+            3. 指标状态只能为：正常、偏高、偏低、异常、未知。
+
+            4. 知识库信息不足时，将指标状态设置为“未知”，不得自行编造参考范围。
+
+            5. value 必须为数字类型，不得包含单位或其他文字。
+
+            6. unit 单独保存指标单位；原始指标没有单位时返回空字符串。
+
+            7. explanation 应简要说明指标含义和需要关注的方向，不得进行确定性疾病诊断。
+
+            8. summary 应对所有指标进行总体概括。
+
+            9. advice 必须输出为字符串数组，包含 2 至 4 条低风险、可执行的建议。
+
+            10. 不得提供具体药物、药物剂量、停药、换药或治疗方案。
+
+            11. 顶层 status 固定为字符串 pending_confirm。
+
+            12. confirm_required 固定为布尔值 true。
+
+            13. 必须严格按照结构化输出格式返回，不得输出标题、Markdown、解释过程或其他额外内容。'
+        selected: false
+        structured_output:
+          schema:
+            additionalProperties: false
+            properties:
+              advice:
+                description: 2至4条低风险、可执行的建议
+                items:
+                  type: string
+                maxItems: 4
+                minItems: 2
+                type: array
+              confirm_required:
+                const: true
+                description: 是否需要用户确认，固定为 true
+                type: boolean
+              indicators:
+                description: 医学检验指标分析结果数组
+                items:
+                  additionalProperties: false
+                  properties:
+                    explanation:
+                      description: 指标含义及需要关注方向的简短说明
+                      type: string
+                    name:
+                      description: 指标名称，例如空腹血糖
+                      type: string
+                    status:
+                      description: 指标状态
+                      enum:
+                      - 正常
+                      - 偏高
+                      - 偏低
+                      - 异常
+                      - 未知
+                      type: string
+                    unit:
+                      description: 指标单位，原文没有单位时返回空字符串
+                      type: string
+                    value:
+                      description: 指标数值，不包含单位
+                      type: number
+                  required:
+                  - name
+                  - value
+                  - unit
+                  - status
+                  - explanation
+                  type: object
+                type: array
+              status:
+                description: 当前分析状态，固定为 pending_confirm
+                enum:
+                - pending_confirm
+                type: string
+              summary:
+                description: 所有指标的总体概括
+                type: string
+            required:
+            - status
+            - indicators
+            - summary
+            - advice
+            - confirm_required
+            type: object
+        structured_output_enabled: true
+        title: 建议生成
+        type: llm
+        vision:
+          enabled: false
+      height: 87
+      id: '1782630701007'
+      position:
+        x: 962
+        y: 285
+      positionAbsolute:
+        x: 962
+        y: 285
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    - data:
+        dataset_ids:
+        - eztGIn+ikokPjwjr2WCtA7z7dalY4YIobBTpRAWsBcIQunsnXYs60STovbogxYKb
+        - 7dyf2RLDhahnaUqa7ymIZ+MQCFzxXUk9A9a5rNI1k/t3VKxDkFdc0CKcWckLSOAb
+        multiple_retrieval_config:
+          reranking_enable: false
+          reranking_mode: weighted_score
+          top_k: 4
+          weights:
+            keyword_setting:
+              keyword_weight: 0.3
+            vector_setting:
+              embedding_model_name: embedding-3
+              embedding_provider_name: langgenius/zhipuai/zhipuai
+              vector_weight: 0.7
+            weight_type: customized
+        query_attachment_selector: []
+        query_variable_selector:
+        - '1782630097734'
+        - structured_output
+        - retrieval_query
+        retrieval_mode: multiple
+        selected: true
+        title: 知识检索
+        type: knowledge-retrieval
+      height: 117
+      id: '1782630748963'
+      position:
+        x: 669
+        y: 92
+      positionAbsolute:
+        x: 669
+        y: 92
+      selected: true
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    viewport:
+      x: 325.8394990029118
+      y: 275.7536740944561
+      zoom: 0.25
+  rag_pipeline_variables: []

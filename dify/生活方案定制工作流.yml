@@ -1,0 +1,1024 @@
+app:
+  description: 生活方案定制工作流
+  icon: 🤖
+  icon_background: '#FFEAD5'
+  icon_type: emoji
+  mode: workflow
+  name: 生活方案定制工作流
+  use_icon_as_answer_icon: false
+dependencies:
+- current_identifier: null
+  type: marketplace
+  value:
+    marketplace_plugin_unique_identifier: langgenius/deepseek:0.0.17@f7a5c1d222d17ee419b17a80d6e4923838fe93788dc724a3af73fbc6990b3a32
+    version: null
+- current_identifier: null
+  type: marketplace
+  value:
+    marketplace_plugin_unique_identifier: langgenius/zhipuai:0.0.30@26018901445dfce76077e57c38582b44d9a91ddc4ff86370e9a769cf8e7af5b5
+    version: null
+kind: app
+version: 0.6.0
+workflow:
+  conversation_variables: []
+  environment_variables:
+  - description: ''
+    id: 220f7723-e213-47b1-a580-6ff27b64f7ec
+    name: TOKEN
+    selector:
+    - env
+    - TOKEN
+    value: H1b67KJR9MBFQXfmO8tJ8REVa6sv1zecJr3bgmhYcXSgVZmv6bHYmyD97qy9yx20
+    value_type: string
+  - description: ''
+    id: 7fbb4367-8c5e-4e3f-bec7-28a039b5555c
+    name: express_endpoint
+    selector:
+    - env
+    - express_endpoint
+    value: http://172.17.0.1:8080
+    value_type: string
+  features:
+    file_upload:
+      allowed_file_extensions:
+      - .JPG
+      - .JPEG
+      - .PNG
+      - .GIF
+      - .WEBP
+      - .SVG
+      allowed_file_types:
+      - image
+      allowed_file_upload_methods:
+      - local_file
+      - remote_url
+      enabled: false
+      fileUploadConfig:
+        attachment_image_file_size_limit: 2
+        audio_file_size_limit: 50
+        batch_count_limit: 5
+        file_size_limit: 15
+        file_upload_limit: 20
+        image_file_batch_limit: 10
+        image_file_size_limit: 10
+        single_chunk_attachment_limit: 10
+        video_file_size_limit: 100
+        workflow_file_upload_limit: 10
+      image:
+        enabled: false
+        number_limits: 3
+        transfer_methods:
+        - local_file
+        - remote_url
+      number_limits: 3
+    opening_statement: ''
+    retriever_resource:
+      enabled: true
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: code
+        targetType: if-else
+      id: 1782301312603--1782301380427-target
+      source: '1782301312603'
+      sourceHandle: source
+      target: '1782301380427'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: code
+        targetType: llm
+      id: 1782301153221-source-1782301303964-target
+      source: '1782301153221'
+      sourceHandle: source
+      target: '1782301303964'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: if-else
+        targetType: template-transform
+      id: 1782301380427-true-1782302421333-target
+      source: '1782301380427'
+      sourceHandle: 'true'
+      target: '1782302421333'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: code
+        targetType: template-transform
+      id: 1782301153221-source-1782305050132-target
+      source: '1782301153221'
+      sourceHandle: source
+      target: '1782305050132'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: template-transform
+        targetType: knowledge-retrieval
+      id: 1782305050132-source-1782301174166-target
+      source: '1782305050132'
+      sourceHandle: source
+      target: '1782301174166'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: knowledge-retrieval
+        targetType: llm
+      id: 1782301174166-source-1782301303964-target
+      source: '1782301174166'
+      sourceHandle: source
+      target: '1782301303964'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: llm
+        targetType: code
+      id: 1782301303964-source-1782301312603-target
+      source: '1782301303964'
+      sourceHandle: source
+      target: '1782301312603'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: if-else
+        targetType: variable-aggregator
+      id: 1782301380427-false-1782306946015-target
+      source: '1782301380427'
+      sourceHandle: 'false'
+      target: '1782306946015'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: template-transform
+        targetType: code
+      id: 1782302421333-source-1782307095422-target
+      selected: false
+      source: '1782302421333'
+      sourceHandle: source
+      target: '1782307095422'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: code
+        targetType: variable-aggregator
+      id: 1782307095422-source-1782306946015-target
+      selected: false
+      source: '1782307095422'
+      sourceHandle: source
+      target: '1782306946015'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: variable-aggregator
+        targetType: code
+      id: 1782306946015-source-1782633596727-target
+      source: '1782306946015'
+      sourceHandle: source
+      target: '1782633596727'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: code
+        targetType: end
+      id: 1782633596727-source-1782301484397-target
+      source: '1782633596727'
+      sourceHandle: source
+      target: '1782301484397'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: start
+        targetType: http-request
+      id: 1782300715009-source-1782301008236-target
+      source: '1782300715009'
+      sourceHandle: source
+      target: '1782301008236'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: http-request
+        targetType: code
+      id: 1782301008236-source-1782301153221-target
+      source: '1782301008236'
+      sourceHandle: source
+      target: '1782301153221'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    nodes:
+    - data:
+        selected: false
+        title: 输入
+        type: start
+        variables:
+        - default: '4'
+          hint: ''
+          label: user_id
+          options: []
+          placeholder: ''
+          required: true
+          type: number
+          variable: user_id
+        - default: ''
+          hint: ''
+          label: risk_assessment_id
+          options: []
+          placeholder: ''
+          required: true
+          type: number
+          variable: risk_assessment_id
+        - default: ''
+          hint: ''
+          label: preferences
+          options: []
+          placeholder: ''
+          required: true
+          type: json_object
+          variable: preferences
+      height: 161
+      id: '1782300715009'
+      position:
+        x: 0
+        y: 0
+      positionAbsolute:
+        x: 0
+        y: 0
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        authorization:
+          config:
+            api_key: H1b67KJR9MBFQXfmO8tJ8REVa6sv1zecJr3bgmhYcXSgZVmv6bHYmyD97qy9yx20
+            header: X-Internal-Token
+            type: custom
+          type: no-auth
+        body:
+          data: []
+          type: none
+        headers: X-Internal-Token:{{#env.TOKEN#}}
+        method: get
+        params: ''
+        retry_config:
+          max_retries: 3
+          retry_enabled: true
+          retry_interval: 100
+        selected: false
+        ssl_verify: true
+        timeout:
+          max_connect_timeout: 0
+          max_read_timeout: 0
+          max_write_timeout: 0
+        title: HTTP 请求
+        type: http-request
+        url: '{{#env.express_endpoint#}}/internal/dify/users/{{#1782300715009.user_id#}}/context'
+        variables: []
+      height: 159
+      id: '1782301008236'
+      position:
+        x: 342
+        y: 27.83333333333333
+      positionAbsolute:
+        x: 342
+        y: 27.83333333333333
+      selected: true
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        code: "import json\nfrom typing import Any\n\n\ndef parse_object(value: Any,\
+          \ field_name: str) -> dict:\n    \"\"\"\n    将字段统一转换为 Object。\n    支持字典、JSON\
+          \ 字符串和空值。\n    \"\"\"\n    if value is None or value == \"\":\n        return\
+          \ {}\n\n    if isinstance(value, dict):\n        return value\n\n    if\
+          \ isinstance(value, str):\n        text = value.strip()\n\n        if not\
+          \ text:\n            return {}\n\n        try:\n            result = json.loads(text)\n\
+          \        except json.JSONDecodeError as error:\n            raise ValueError(\n\
+          \                f\"{field_name} JSON 解析失败：\"\n                f\"第 {error.lineno}\
+          \ 行，第 {error.colno} 列，\"\n                f\"{error.msg}\"\n           \
+          \ )\n\n        if not isinstance(result, dict):\n            raise ValueError(\n\
+          \                f\"{field_name} 必须是 JSON 对象，\"\n                f\"不能是\
+          \ {type(result).__name__}\"\n            )\n\n        return result\n\n\
+          \    raise ValueError(\n        f\"{field_name} 必须是 Object 或 JSON 字符串，\"\
+          \n        f\"当前类型：{type(value).__name__}\"\n    )\n\n\ndef main(\n    body:\
+          \ Any = None,\n    status_code: Any = None,\n    **kwargs\n) -> dict:\n\
+          \    # 1. 校验 HTTP 状态码\n    if status_code not in (None, \"\"):\n       \
+          \ try:\n            http_status = int(status_code)\n        except (TypeError,\
+          \ ValueError):\n            raise ValueError(\n                f\"status_code\
+          \ 无效：{status_code}\"\n            )\n\n        if not 200 <= http_status\
+          \ < 300:\n            raise ValueError(\n                f\"HTTP 请求失败，状态码：{http_status}\"\
+          \n            )\n\n    # 2. 解析 HTTP body\n    payload = parse_object(body,\
+          \ \"body\")\n\n    # 3. 校验业务状态\n    business_code = payload.get(\"code\"\
+          )\n\n    if business_code not in (None, 0, \"0\", 200, \"200\"):\n     \
+          \   message = payload.get(\"message\") or \"接口请求失败\"\n        raise ValueError(\n\
+          \            f\"接口返回错误：code={business_code}，message={message}\"\n      \
+          \  )\n\n    # 4. 兼容接口使用 data 包装结果\n    data = payload.get(\"data\")\n\n\
+          \    if isinstance(data, dict):\n        source = data\n    else:\n    \
+          \    source = payload\n\n    # 5. 获取 profile\n    profile_value = source.get(\"\
+          profile\")\n\n    if profile_value is not None:\n        profile = parse_object(profile_value,\
+          \ \"profile\")\n    else:\n        # 兼容接口直接返回用户字段，没有 profile 外层\n      \
+          \  profile = {}\n\n        profile_fields = [\n            \"user_id\",\n\
+          \            \"risk_assessment_id\",\n            \"preferences\"\n    \
+          \    ]\n\n        for field in profile_fields:\n            if field in\
+          \ source:\n                profile[field] = source[field]\n\n        # preferences\
+          \ 必须保持为对象\n        if \"preferences\" in profile:\n            profile[\"\
+          preferences\"] = parse_object(\n                profile[\"preferences\"\
+          ],\n                \"preferences\"\n            )\n\n    # 6. 获取最新风险评估\n\
+          \    latest_risk = parse_object(\n        source.get(\"latest_risk\"),\n\
+          \        \"latest_risk\"\n    )\n\n    # 兼容接口字段名称为 latest_risk_assessment\n\
+          \    if not latest_risk and source.get(\"latest_risk_assessment\") is not\
+          \ None:\n        latest_risk = parse_object(\n            source.get(\"\
+          latest_risk_assessment\"),\n            \"latest_risk_assessment\"\n   \
+          \     )\n\n    # 7. 获取最新生活方案\n    latest_plan = parse_object(\n        source.get(\"\
+          latest_plan\"),\n        \"latest_plan\"\n    )\n\n    # 兼容接口字段名称为 plan\n\
+          \    if not latest_plan and source.get(\"plan\") is not None:\n        latest_plan\
+          \ = parse_object(\n            source.get(\"plan\"),\n            \"plan\"\
+          \n        )\n\n    # 8. 必须返回全部三个输出字段\n    return {\n        \"profile\"\
+          : profile,\n        \"latest_risk\": latest_risk,\n        \"latest_plan\"\
+          : latest_plan\n    }"
+        code_language: python3
+        outputs:
+          latest_plan:
+            children: null
+            type: object
+          latest_risk:
+            children: null
+            type: object
+          profile:
+            children: null
+            type: object
+        selected: false
+        title: 用户信息解析
+        type: code
+        variables:
+        - value_selector:
+          - '1782301008236'
+          - body
+          value_type: string
+          variable: body
+        - value_selector:
+          - '1782301008236'
+          - status_code
+          value_type: number
+          variable: status_code
+      height: 52
+      id: '1782301153221'
+      position:
+        x: 684
+        y: 107.83333333333333
+      positionAbsolute:
+        x: 684
+        y: 107.83333333333333
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        dataset_ids:
+        - 03LFMPvHUziryxfu0y2BiycXc0TQg5P5cPlUMryw5JNMjA+GA29+df95u46QaKKZ
+        - eztGIn+ikokPjwjr2WCtA7z7dalY4YIobBTpRAWsBcIQunsnXYs60STovbogxYKb
+        - 7dyf2RLDhahnaUqa7ymIZ+MQCFzxXUk9A9a5rNI1k/t3VKxDkFdc0CKcWckLSOAb
+        multiple_retrieval_config:
+          reranking_enable: false
+          reranking_mode: weighted_score
+          top_k: 4
+          weights:
+            keyword_setting:
+              keyword_weight: 0.3
+            vector_setting:
+              embedding_model_name: embedding-3
+              embedding_provider_name: langgenius/zhipuai/zhipuai
+              vector_weight: 0.7
+            weight_type: customized
+        query_attachment_selector: []
+        query_variable_selector:
+        - '1782305050132'
+        - output
+        retrieval_mode: multiple
+        selected: false
+        title: 知识检索
+        type: knowledge-retrieval
+      height: 146
+      id: '1782301174166'
+      position:
+        x: 1388.755012886115
+        y: 175.9
+      positionAbsolute:
+        x: 1388.755012886115
+        y: 175.9
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        context:
+          enabled: true
+          variable_selector:
+          - '1782301174166'
+          - result
+        model:
+          completion_params:
+            temperature: 0.7
+          mode: chat
+          name: deepseek-v4-flash
+          provider: langgenius/deepseek/deepseek
+        prompt_config:
+          jinja2_variables:
+          - value_selector:
+            - '1782301153221'
+            - profile
+            variable: profile
+          - value_selector:
+            - '1782301153221'
+            - latest_risk
+            variable: latest_risk
+          - value_selector:
+            - '1782301153221'
+            - latest_plan
+            value_type: object
+            variable: latest_plan
+        prompt_template:
+        - edition_type: jinja2
+          id: e29c6d45-1ffb-46bd-be29-da357ec74cf1
+          jinja2_text: "你是一名专业、谨慎的健康管理生活方案生成助手。\r\n\r\n请根据用户健康档案、最新风险评估、历史生活方案和知识库检索内容，生成个性化、具体、可执行的生活方案。\r\
+            \n\r\n用户健康档案：\r\n{{ profile }}\r\n\r\n最新风险评估：\r\n{{ latest_risk }}\r\n\
+            \r\n{% if latest_plan %}\r\n最近一次生活方案：\r\n{{ latest_plan }}\r\n\r\n知识库上下文：\r\
+            \n{{ context }}\r\n\r\n请参考历史方案进行合理延续和优化，避免机械重复。\r\n{% else %}\r\n用户暂无历史生活方案，请生成一份新的生活方案。\r\
+            \n{% endif %}\r\n\r\n生成规则：\r\n\r\n1. 综合考虑用户年龄、性别、BMI、腰围、血压、既往病史、糖尿病家族史、生活方式、风险评分和风险等级。\r\
+            \n2. 优先参考知识库上下文中的饮食、运动、睡眠、监测和复查建议。\r\n3. 不得编造输入中不存在的疾病、检查结果、生活习惯或偏好。\r\
+            \n4. 对 null 或缺失指标不得自行推测，可以给出检查或复查建议。\r\n5. 建议必须具体、现实、可执行，尽量包含时间、频率、时长和目标值。\r\
+            \n6. 如果用户属于高风险人群，运动建议应循序渐进，避免直接安排高强度运动。\r\n7. 不进行医学诊断，不建议用户自行调整药物。\r\n\
+            8. target_value 必须是数字，单位单独写入 unit。\r\n9. 严格按照结构化输出中配置的 JSON Schema 输出。\r\
+            \n10. 只输出 JSON，不输出 Markdown、代码块或其他说明。"
+          role: system
+          text: '请根据以下用户健康数据和知识库上下文，生成个性化生活方案。
+
+
+            用户健康档案：
+
+
+            {{ profile }}
+
+
+            最新风险评估：
+
+
+            {{ latest_risk }}
+
+
+            {% if latest_plan %}
+
+            最近一次生活方案：
+
+
+            {{ latest_plan }}
+
+            请在原方案基础上进行合理延续或优化。
+
+            {% else %}
+
+            用户暂无历史生活方案，请生成一份新的方案。
+
+            {% endif %}
+
+
+            生成要求：
+
+
+            1. 综合考虑用户的年龄、性别、BMI、腰围、血压、既往病史、家族史和生活方式。
+
+            2. 根据风险等级、风险评分、缺失检查项目和已有建议调整方案重点。
+
+            3. 优先采用知识库上下文中的饮食、运动、睡眠、监测和复查依据。
+
+            4. 不得编造输入数据中不存在的信息。
+
+            5. 不得进行医学诊断或提供自行调整药物的建议。
+
+            6. 输出必须符合已设置的结构化 JSON Schema。//'
+        selected: false
+        structured_output:
+          schema:
+            properties:
+              disclaimer:
+                type: string
+              sections:
+                items:
+                  properties:
+                    items:
+                      items:
+                        properties:
+                          content:
+                            type: string
+                          time:
+                            type: string
+                          title:
+                            type: string
+                        required:
+                        - title
+                        - time
+                        - content
+                        type: object
+                      type: array
+                    title:
+                      type: string
+                    type:
+                      type: string
+                  required:
+                  - type
+                  - title
+                  - items
+                  type: object
+                type: array
+              summary:
+                type: string
+              tasks:
+                items:
+                  properties:
+                    target_time:
+                      type: string
+                    target_value:
+                      type: number
+                    task_type:
+                      type: string
+                    title:
+                      type: string
+                    unit:
+                      type: string
+                  required:
+                  - task_type
+                  - title
+                  - target_value
+                  - unit
+                  - target_time
+                  type: object
+                type: array
+              title:
+                type: string
+            required:
+            - title
+            - summary
+            - sections
+            - tasks
+            - disclaimer
+            type: object
+        structured_output_enabled: true
+        title: LLM
+        type: llm
+        vision:
+          enabled: false
+      height: 88
+      id: '1782301303964'
+      position:
+        x: 1750
+        y: 116.73333333333332
+      positionAbsolute:
+        x: 1750
+        y: 116.73333333333332
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        code: "import json\n\n\ndef is_number(value):\n    \"\"\"判断是否为数字，排除 Boolean。\"\
+          \"\"\n    return isinstance(value, (int, float)) and not isinstance(value,\
+          \ bool)\n\n\ndef main(structured_output) -> dict:\n    errors = []\n\n \
+          \   # 兼容 Object 和 JSON 字符串\n    if isinstance(structured_output, dict):\n\
+          \        data = structured_output\n\n    elif isinstance(structured_output,\
+          \ str):\n        text = structured_output.strip()\n\n        # 兼容模型返回的 Markdown\
+          \ JSON 代码块\n        if text.startswith(\"```json\"):\n            text =\
+          \ text[7:]\n        elif text.startswith(\"```\"):\n            text = text[3:]\n\
+          \n        if text.endswith(\"```\"):\n            text = text[:-3]\n\n \
+          \       try:\n            data = json.loads(text.strip())\n        except\
+          \ json.JSONDecodeError as error:\n            return {\n               \
+          \ \"is_legal\": False,\n                \"body\": {\n                  \
+          \  \"_validation_errors\": [\n                        f\"JSON 解析失败：{str(error)}\"\
+          \n                    ]\n                }\n            }\n\n    else:\n\
+          \        return {\n            \"is_legal\": False,\n            \"body\"\
+          : {\n                \"_validation_errors\": [\n                    \"structured_output\
+          \ 必须是 Object 或 JSON 字符串\"\n                ]\n            }\n        }\n\
+          \n    if not isinstance(data, dict):\n        return {\n            \"is_legal\"\
+          : False,\n            \"body\": {\n                \"_validation_errors\"\
+          : [\n                    \"最外层必须是 JSON 对象\"\n                ]\n       \
+          \     }\n        }\n\n    # 兼容测试时额外包了一层 structured_output\n    if (\n  \
+          \      \"structured_output\" in data\n        and isinstance(data[\"structured_output\"\
+          ], dict)\n        and len(data) == 1\n    ):\n        data = data[\"structured_output\"\
+          ]\n\n    # 校验顶层字符串字段\n    for field in [\"title\", \"summary\", \"disclaimer\"\
+          ]:\n        if field not in data:\n            errors.append(f\"缺少字段：{field}\"\
+          )\n        elif not isinstance(data[field], str):\n            errors.append(f\"\
+          {field} 必须是 String\")\n        elif not data[field].strip():\n         \
+          \   errors.append(f\"{field} 不能为空\")\n\n    # 校验 sections\n    sections\
+          \ = data.get(\"sections\")\n\n    if not isinstance(sections, list):\n \
+          \       errors.append(\"sections 必须是 Array\")\n    else:\n        for section_index,\
+          \ section in enumerate(sections):\n            prefix = f\"sections[{section_index}]\"\
+          \n\n            if not isinstance(section, dict):\n                errors.append(f\"\
+          {prefix} 必须是 Object\")\n                continue\n\n            for field\
+          \ in [\"type\", \"title\"]:\n                if not isinstance(section.get(field),\
+          \ str):\n                    errors.append(f\"{prefix}.{field} 必须是 String\"\
+          )\n\n            items = section.get(\"items\")\n\n            if not isinstance(items,\
+          \ list):\n                errors.append(f\"{prefix}.items 必须是 Array\")\n\
+          \                continue\n\n            for item_index, item in enumerate(items):\n\
+          \                item_prefix = f\"{prefix}.items[{item_index}]\"\n\n   \
+          \             if not isinstance(item, dict):\n                    errors.append(f\"\
+          {item_prefix} 必须是 Object\")\n                    continue\n\n          \
+          \      for field in [\"title\", \"time\", \"content\"]:\n              \
+          \      if not isinstance(item.get(field), str):\n                      \
+          \  errors.append(\n                            f\"{item_prefix}.{field}\
+          \ 必须是 String\"\n                        )\n\n    # 校验 tasks\n    tasks =\
+          \ data.get(\"tasks\")\n\n    if not isinstance(tasks, list):\n        errors.append(\"\
+          tasks 必须是 Array\")\n    else:\n        for task_index, task in enumerate(tasks):\n\
+          \            prefix = f\"tasks[{task_index}]\"\n\n            if not isinstance(task,\
+          \ dict):\n                errors.append(f\"{prefix} 必须是 Object\")\n    \
+          \            continue\n\n            for field in [\n                \"\
+          task_type\",\n                \"title\",\n                \"unit\",\n  \
+          \              \"target_time\"\n            ]:\n                if not isinstance(task.get(field),\
+          \ str):\n                    errors.append(f\"{prefix}.{field} 必须是 String\"\
+          )\n\n            if not is_number(task.get(\"target_value\")):\n       \
+          \         errors.append(\n                    f\"{prefix}.target_value 必须是\
+          \ Number\"\n                )\n\n    # 校验通过\n    if not errors:\n      \
+          \  return {\n            \"is_legal\": True,\n            \"body\": data\n\
+          \        }\n\n    # 校验失败：保留原始结果并写入错误信息\n    invalid_body = dict(data)\n\
+          \    invalid_body[\"_validation_errors\"] = errors\n\n    return {\n   \
+          \     \"is_legal\": False,\n        \"body\": invalid_body\n    }"
+        code_language: python3
+        outputs:
+          body:
+            children: null
+            type: object
+          is_legal:
+            children: null
+            type: boolean
+        selected: false
+        title: 格式校验
+        type: code
+        variables:
+        - value_selector:
+          - '1782301303964'
+          - structured_output
+          value_type: object
+          variable: structured_output
+      height: 52
+      id: '1782301312603'
+      position:
+        x: 2092
+        y: 149.39999999999998
+      positionAbsolute:
+        x: 2092
+        y: 149.39999999999998
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        cases:
+        - case_id: 'true'
+          conditions:
+          - comparison_operator: is
+            id: 722d1e6c-91a9-4eb1-80ba-079403859af8
+            value: false
+            varType: boolean
+            variable_selector:
+            - '1782301312603'
+            - is_legal
+          id: 'true'
+          logical_operator: and
+        selected: false
+        title: 条件分支
+        type: if-else
+      height: 124
+      id: '1782301380427'
+      position:
+        x: 2434
+        y: 122.06666666666663
+      positionAbsolute:
+        x: 2434
+        y: 122.06666666666663
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        outputs:
+        - value_selector:
+          - '1782633596727'
+          - title
+          value_type: string
+          variable: title
+        - value_selector:
+          - '1782633596727'
+          - summary
+          value_type: string
+          variable: summary
+        - value_selector:
+          - '1782633596727'
+          - sections
+          value_type: array[object]
+          variable: sections
+        - value_selector:
+          - '1782633596727'
+          - tasks
+          value_type: array[object]
+          variable: tasks
+        - value_selector:
+          - '1782633596727'
+          - disclaimer
+          value_type: string
+          variable: disclaimer
+        selected: false
+        title: 输出
+        type: end
+      height: 193
+      id: '1782301484397'
+      position:
+        x: 4184
+        y: 147.86666666666665
+      positionAbsolute:
+        x: 4184
+        y: 147.86666666666665
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        selected: false
+        template: "{\r\n\"title\": \"基础控糖生活方案\",\r\n\"summary\": \"由于个性化方案格式校验失败，暂时提供以规律饮食、适量运动、充足睡眠和健康监测为核心的基础控糖建议。\"\
+          ,\r\n\"sections\": [\r\n{\r\n\"type\": \"diet\",\r\n\"title\": \"饮食管理\"\
+          ,\r\n\"items\": [\r\n{\r\n\"title\": \"规律安排三餐\",\r\n\"time\": \"每日固定时间\"\
+          ,\r\n\"content\": \"按时进餐，避免长时间空腹后暴饮暴食。每餐适量摄入主食，并搭配蔬菜、鸡蛋、鱼肉、瘦肉或豆制品。\"\r\n\
+          },\r\n{\r\n\"title\": \"减少添加糖摄入\",\r\n\"time\": \"全天\",\r\n\"content\":\
+          \ \"优先饮用白水或无糖饮品，减少含糖饮料、甜点、糖果和高糖加工食品。\"\r\n}\r\n]\r\n},\r\n{\r\n\"type\"\
+          : \"exercise\",\r\n\"title\": \"运动管理\",\r\n\"items\": [\r\n{\r\n\"title\"\
+          : \"中等强度有氧运动\",\r\n\"time\": \"每周5天，每次30分钟\",\r\n\"content\": \"可选择快走、骑行或其他身体能够耐受的中等强度运动，开始前先进行热身，并根据身体反应逐步增加运动量。\"\
+          \r\n},\r\n{\r\n\"title\": \"减少久坐\",\r\n\"time\": \"每坐60分钟后\",\r\n\"content\"\
+          : \"起身活动3至5分钟，可进行步行、伸展或简单家务活动。\"\r\n}\r\n]\r\n},\r\n{\r\n\"type\": \"sleep\"\
+          ,\r\n\"title\": \"睡眠与作息\",\r\n\"items\": [\r\n{\r\n\"title\": \"保持规律睡眠\"\
+          ,\r\n\"time\": \"每日\",\r\n\"content\": \"尽量保持固定的入睡和起床时间，成年人每日睡眠目标不少于7小时，睡前减少咖啡因摄入和长时间使用电子设备。\"\
+          \r\n}\r\n]\r\n},\r\n{\r\n\"type\": \"monitoring\",\r\n\"title\": \"健康监测\"\
+          ,\r\n\"items\": [\r\n{\r\n\"title\": \"记录生活执行情况\",\r\n\"time\": \"每日睡前\"\
+          ,\r\n\"content\": \"简单记录当天饮食、运动和睡眠完成情况。如已被医生要求监测血糖，应按照医生制定的时间和频率进行测量。\"\r\
+          \n},\r\n{\r\n\"title\": \"关注身体不适\",\r\n\"time\": \"出现不适时\",\r\n\"content\"\
+          : \"如出现明显头晕、心慌、出冷汗、乏力或其他异常症状，应停止运动并及时寻求专业医疗帮助。\"\r\n}\r\n]\r\n}\r\n],\r\n\
+          \"tasks\": [\r\n{\r\n\"task_type\": \"exercise\",\r\n\"title\": \"完成中等强度运动\"\
+          ,\r\n\"target_value\": 30,\r\n\"unit\": \"分钟\",\r\n\"target_time\": \"每周5天\"\
+          \r\n},\r\n{\r\n\"task_type\": \"diet\",\r\n\"title\": \"避免含糖饮料\",\r\n\"\
+          target_value\": 0,\r\n\"unit\": \"杯\",\r\n\"target_time\": \"每日\"\r\n},\r\
+          \n{\r\n\"task_type\": \"sleep\",\r\n\"title\": \"保证睡眠时间\",\r\n\"target_value\"\
+          : 7,\r\n\"unit\": \"小时\",\r\n\"target_time\": \"每日夜间\"\r\n},\r\n{\r\n\"\
+          task_type\": \"monitoring\",\r\n\"title\": \"记录生活执行情况\",\r\n\"target_value\"\
+          : 1,\r\n\"unit\": \"次\",\r\n\"target_time\": \"每日睡前\"\r\n}\r\n],\r\n\"disclaimer\"\
+          : \"本方案为格式校验失败时使用的通用健康管理建议，不能替代个性化评估、医学诊断或治疗。如已确诊糖尿病、正在使用降糖药物、存在基础疾病或出现身体不适，请先咨询医生。\"\
+          \r\n}\r\n"
+        title: 模板转换
+        type: template-transform
+        variables: []
+      height: 52
+      id: '1782302421333'
+      position:
+        x: 2796
+        y: 140.53333333333333
+      positionAbsolute:
+        x: 2796
+        y: 140.53333333333333
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        selected: false
+        template: "{% set p = profile | default({}, true) %}\r\n{% set risk = latest_risk\
+          \ | default({}, true) %}\r\n{% set plan = latest_plan | default({}, true)\
+          \ %}\r\n\r\n{% set preferences = p.get(\"preferences\") or {} %}\r\n{% set\
+          \ lifestyle = p.get(\"lifestyle\") or {} %}\r\n\r\n【用户画像】\r\n\r\n用户 ID：{{\
+          \ p.get(\"user_id\", \"未提供\") }}\r\n风险评估 ID：{{ p.get(\"risk_assessment_id\"\
+          , \"未提供\") }}\r\n\r\n基本信息：\r\n{{ p.get(\"basic_info\") or {} }}\r\n\r\n\
+          生活方式：\r\n{{ lifestyle }}\r\n\r\n用户偏好：\r\n{{ preferences }}\r\n\r\n其他用户画像信息：\r\
+          \n{{ p }}\r\n\r\n【最新风险评估】\r\n\r\n{% if risk %}\r\n{{ risk }}\r\n{% else\
+          \ %}\r\n暂无最新风险评估数据。\r\n{% endif %}\r\n\r\n【最新生活方案】\r\n\r\n{% if plan %}\r\
+          \n{{ plan }}\r\n{% else %}\r\n暂无最新生活方案数据。\r\n{% endif %}"
+        title: '用户信息模板转换 '
+        type: template-transform
+        variables:
+        - value_selector:
+          - '1782301153221'
+          - profile
+          value_type: object
+          variable: profile
+        - value_selector:
+          - '1782301153221'
+          - latest_risk
+          value_type: object
+          variable: latest_risk
+        - value_selector:
+          - '1782301153221'
+          - latest_plan
+          value_type: object
+          variable: lastest_plan
+      height: 52
+      id: '1782305050132'
+      position:
+        x: 1046
+        y: 175.9
+      positionAbsolute:
+        x: 1046
+        y: 175.9
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        output_type: object
+        selected: false
+        title: 变量聚合器
+        type: variable-aggregator
+        variables:
+        - - '1782301312603'
+          - body
+      height: 109
+      id: '1782306946015'
+      position:
+        x: 3500
+        y: 163.0333333333333
+      positionAbsolute:
+        x: 3500
+        y: 163.0333333333333
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        code: "import json\n\n\ndef main(fallback_text) -> dict:\n    # 如果上游已经传入 Object，直接使用\n\
+          \    if isinstance(fallback_text, dict):\n        body = fallback_text\n\
+          \n    # 模板转换通常输出 String，需要解析\n    elif isinstance(fallback_text, str):\n\
+          \        text = fallback_text.strip()\n\n        # 兼容 ```json ... ``` 代码块\n\
+          \        if text.startswith(\"```json\"):\n            text = text[7:].strip()\n\
+          \        elif text.startswith(\"```\"):\n            text = text[3:].strip()\n\
+          \n        if text.endswith(\"```\"):\n            text = text[:-3].strip()\n\
+          \n        try:\n            body = json.loads(text)\n        except json.JSONDecodeError\
+          \ as error:\n            raise ValueError(f\"基础方案 JSON 解析失败：{error}\")\n\
+          \n    else:\n        raise ValueError(\"fallback_text 必须是 JSON 字符串或 Object\"\
+          )\n\n    # 确保最外层为对象\n    if not isinstance(body, dict):\n        raise ValueError(\"\
+          基础方案 JSON 最外层必须是 Object\")\n\n    return {\n        \"body\": body\n   \
+          \ }"
+        code_language: python3
+        outputs:
+          result:
+            children: null
+            type: object
+        selected: false
+        title: json解析
+        type: code
+        variables:
+        - value_selector:
+          - '1782302421333'
+          - output
+          value_type: string
+          variable: output
+      height: 52
+      id: '1782307095422'
+      position:
+        x: 3138
+        y: 149.2
+      positionAbsolute:
+        x: 3138
+        y: 149.2
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        code: "import json\nimport re\n\n\ndef main(json_data) -> dict:\n    \"\"\"\
+          \n    将生活方案 JSON 拆分为五个顶层字段。\n\n    支持两种输入：\n    1. Dify 结构化输出生成的 Object\n\
+          \    2. LLM 输出的 JSON 字符串\n    \"\"\"\n\n    # structured_output 通常已经是字典\n\
+          \    if isinstance(json_data, dict):\n        data = json_data\n\n    #\
+          \ 兼容普通 JSON 字符串\n    elif isinstance(json_data, str):\n        text = json_data.strip()\n\
+          \n        # 清除模型可能输出的 Markdown 代码块\n        text = re.sub(\n           \
+          \ r\"^```(?:json)?\\s*\",\n            \"\",\n            text,\n      \
+          \      flags=re.IGNORECASE\n        )\n        text = re.sub(r\"\\s*```$\"\
+          , \"\", text)\n\n        data = json.loads(text)\n\n    else:\n        raise\
+          \ ValueError(\"json_data 必须是 JSON 对象或 JSON 字符串\")\n\n    if not isinstance(data,\
+          \ dict):\n        raise ValueError(\"JSON 顶层必须是对象\")\n\n    # 获取字段\n   \
+          \ title = data.get(\"title\", \"\")\n    summary = data.get(\"summary\"\
+          , \"\")\n    sections = data.get(\"sections\", [])\n    tasks = data.get(\"\
+          tasks\", [])\n    disclaimer = data.get(\"disclaimer\", \"\")\n\n    # 字段类型校验\n\
+          \    if not isinstance(title, str):\n        raise ValueError(\"title 必须是字符串\"\
+          )\n\n    if not isinstance(summary, str):\n        raise ValueError(\"summary\
+          \ 必须是字符串\")\n\n    if not isinstance(sections, list):\n        raise ValueError(\"\
+          sections 必须是数组\")\n\n    if not isinstance(tasks, list):\n        raise\
+          \ ValueError(\"tasks 必须是数组\")\n\n    if not isinstance(disclaimer, str):\n\
+          \        raise ValueError(\"disclaimer 必须是字符串\")\n\n    # 校验 sections 内部结构\n\
+          \    for section_index, section in enumerate(sections):\n        if not\
+          \ isinstance(section, dict):\n            raise ValueError(\n          \
+          \      f\"sections 第 {section_index + 1} 项必须是对象\"\n            )\n\n   \
+          \     if not isinstance(section.get(\"type\", \"\"), str):\n           \
+          \ raise ValueError(\n                f\"sections 第 {section_index + 1} 项的\
+          \ type 必须是字符串\"\n            )\n\n        if not isinstance(section.get(\"\
+          title\", \"\"), str):\n            raise ValueError(\n                f\"\
+          sections 第 {section_index + 1} 项的 title 必须是字符串\"\n            )\n\n    \
+          \    items = section.get(\"items\", [])\n\n        if not isinstance(items,\
+          \ list):\n            raise ValueError(\n                f\"sections 第 {section_index\
+          \ + 1} 项的 items 必须是数组\"\n            )\n\n        for item_index, item in\
+          \ enumerate(items):\n            if not isinstance(item, dict):\n      \
+          \          raise ValueError(\n                    f\"sections 第 {section_index\
+          \ + 1} 项中的 \"\n                    f\"第 {item_index + 1} 个 item 必须是对象\"\n\
+          \                )\n\n    # 校验 tasks 内部结构\n    for task_index, task in enumerate(tasks):\n\
+          \        if not isinstance(task, dict):\n            raise ValueError(\n\
+          \                f\"tasks 第 {task_index + 1} 项必须是对象\"\n            )\n\n\
+          \    return {\n        \"title\": title,\n        \"summary\": summary,\n\
+          \        \"sections\": sections,\n        \"tasks\": tasks,\n        \"\
+          disclaimer\": disclaimer\n    }"
+        code_language: python3
+        outputs:
+          disclaimer:
+            children: null
+            type: string
+          sections:
+            children: null
+            type: array[object]
+          summary:
+            children: null
+            type: string
+          tasks:
+            children: null
+            type: array[object]
+          title:
+            children: null
+            type: string
+        selected: false
+        title: 字段拆分
+        type: code
+        variables:
+        - value_selector:
+          - '1782306946015'
+          - output
+          value_type: object
+          variable: json_data
+      height: 52
+      id: '1782633596727'
+      position:
+        x: 3842
+        y: 209.7
+      positionAbsolute:
+        x: 3842
+        y: 209.7
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    viewport:
+      x: 10.735901662046103
+      y: 279.626290339263
+      zoom: 0.4881602832226419
+  rag_pipeline_variables: []
