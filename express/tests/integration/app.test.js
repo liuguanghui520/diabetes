@@ -427,4 +427,76 @@ describe('Express API', () => {
       .set('Authorization', `Bearer ${adminToken}`)
     expect(homeConfig.body.data.slots).toHaveLength(1)
   })
+
+  it('rejects expired or malformed JWT with 401', async () => {
+    const { app } = await createTestContext()
+    const token = await registerAndLogin(request, app)
+
+    // Valid token works
+    const me = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${token}`)
+    expect(me.status).toBe(200)
+
+    // No Authorization header
+    const noAuth = await request(app).get('/api/auth/me')
+    expect(noAuth.status).toBe(401)
+
+    // Malformed token
+    const badToken = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', 'Bearer not.a.real.token')
+    expect(badToken.status).toBe(401)
+
+    // Wrong scheme
+    const wrongScheme = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', 'Basic whatever')
+    expect(wrongScheme.status).toBe(401)
+  })
+
+  it('deduplicates repeated risk assessments via Idempotency-Key', async () => {
+    const { app } = await createTestContext()
+    const token = await registerAndLogin(request, app)
+
+    const body = {
+      diagnosed_diabetes: false,
+      age: 40,
+      gender: 'female',
+      height_cm: 165,
+      weight_kg: 60,
+      waist_cm: 75,
+      sbp_mm_hg: 120,
+      family_history_diabetes: false,
+      labs: {}
+    }
+
+    // First request
+    const first = await request(app)
+      .post('/api/risk-assessments')
+      .set('Authorization', `Bearer ${token}`)
+      .set('Idempotency-Key', 'idem-edge-001')
+      .send(body)
+    expect(first.status).toBe(200)
+    const assessmentId = first.body.data.assessment_id
+    expect(assessmentId).toBeTruthy()
+
+    // Second identical request — should return the same assessment
+    const second = await request(app)
+      .post('/api/risk-assessments')
+      .set('Authorization', `Bearer ${token}`)
+      .set('Idempotency-Key', 'idem-edge-001')
+      .send(body)
+    expect(second.status).toBe(200)
+    expect(second.body.data.assessment_id).toBe(assessmentId)
+
+    // Different Idempotency-Key creates a new assessment
+    const third = await request(app)
+      .post('/api/risk-assessments')
+      .set('Authorization', `Bearer ${token}`)
+      .set('Idempotency-Key', 'idem-edge-002')
+      .send(body)
+    expect(third.status).toBe(200)
+    expect(third.body.data.assessment_id).not.toBe(assessmentId)
+  })
 })
