@@ -36,7 +36,7 @@ workflow:
     selector:
     - env
     - TOKEN
-    value: H1b67KJR9MBFQXfmO8tJ8REVa6sv1zecJr3bgmhYcXSgZVmv6bHYmyD97qy9yx20
+    value: H1b67KJR9MBFQXfmO8tJ8REVa6sv1zecJr3bgmhYcXSgVZmv6bHYmyD97qy9yx20
     value_type: string
   - description: ''
     id: 6419deca-440e-43e3-bdb4-c8db1e131752
@@ -421,7 +421,7 @@ workflow:
           required: false
           type: text-input
           variable: app_type
-      height: 134
+      height: 135
       id: '1782627603942'
       position:
         x: -7.09860576868715
@@ -440,7 +440,7 @@ workflow:
         title: 直接回复
         type: answer
         variables: []
-      height: 115
+      height: 116
       id: answer
       position:
         x: 1046
@@ -485,7 +485,7 @@ workflow:
           - user_id
           value_type: string
           variable: input_user_id
-      height: 51
+      height: 52
       id: '1782628802220'
       position:
         x: 342
@@ -514,7 +514,7 @@ workflow:
         selected: false
         title: CheckUserId
         type: if-else
-      height: 139
+      height: 140
       id: '1782628999882'
       position:
         x: 685.5611110778734
@@ -541,7 +541,7 @@ workflow:
         title: BindUserId
         type: assigner
         version: '2'
-      height: 83
+      height: 84
       id: '1782629244701'
       position:
         x: 1053.098605768687
@@ -557,10 +557,10 @@ workflow:
     - data:
         authorization:
           config:
-            api_key: INTERNAL_DIFY_TOKEN
+            api_key: H1b67KJR9MBFQXfmO8tJ8REVa6sv1zecJr3bgmhYcXSgZVmv6bHYmyD97qy9yx20
             header: X-Internal-Token
             type: custom
-          type: api-key
+          type: no-auth
         body:
           data: []
           type: none
@@ -571,7 +571,7 @@ workflow:
           max_retries: 3
           retry_enabled: true
           retry_interval: 100
-        selected: false
+        selected: true
         ssl_verify: false
         timeout:
           max_connect_timeout: 0
@@ -579,16 +579,16 @@ workflow:
           max_write_timeout: 0
         title: HTTP 请求
         type: http-request
-        url: '{{#env.express_endpoint#}}/internal/dify/users{{#1782628802220.resolved_user_id#}}/context'
+        url: '{{#env.express_endpoint#}}/internal/dify/users/{{#1782627603942.user_id#}}/context'
         variables: []
-      height: 176
+      height: 175
       id: '1782629429182'
       position:
-        x: 1388
-        y: 621.6735572097627
+        x: 1391.0044725149457
+        y: 626.1802659821811
       positionAbsolute:
-        x: 1388
-        y: 621.6735572097627
+        x: 1391.0044725149457
+        y: 626.1802659821811
       selected: true
       sourcePosition: right
       targetPosition: left
@@ -658,7 +658,7 @@ workflow:
           - body
           value_type: string
           variable: body
-      height: 51
+      height: 52
       id: '1782629741655'
       position:
         x: 1730
@@ -687,14 +687,14 @@ workflow:
         selected: false
         title: CheckContextHttp
         type: if-else
-      height: 123
+      height: 124
       id: '1782630003547'
       position:
-        x: 2072
-        y: 722.5656565656567
+        x: 2079.0541225817115
+        y: 760.7323232323234
       positionAbsolute:
-        x: 2072
-        y: 722.5656565656567
+        x: 2079.0541225817115
+        y: 760.7323232323234
       selected: false
       sourcePosition: right
       targetPosition: left
@@ -706,7 +706,7 @@ workflow:
         title: 直接回复 2
         type: answer
         variables: []
-      height: 147
+      height: 148
       id: '1782630026778'
       position:
         x: 2434
@@ -735,7 +735,7 @@ workflow:
         selected: false
         title: IF_ProfileExists
         type: if-else
-      height: 147
+      height: 148
       id: '1782630398807'
       position:
         x: 2796
@@ -777,7 +777,7 @@ workflow:
         type: question-classifier
         vision:
           enabled: false
-      height: 261
+      height: 262
       id: '1782630511518'
       position:
         x: 2434
@@ -816,7 +816,7 @@ workflow:
         selected: false
         title: KR_DiabetesKnowledge
         type: knowledge-retrieval
-      height: 173
+      height: 174
       id: '1782631009551'
       position:
         x: 2796
@@ -898,7 +898,7 @@ workflow:
         type: llm
         vision:
           enabled: false
-      height: 87
+      height: 88
       id: '1782631053062'
       position:
         x: 3138
@@ -936,7 +936,7 @@ workflow:
         title: Answer_NoProfile
         type: answer
         variables: []
-      height: 147
+      height: 148
       id: '1782631317395'
       position:
         x: 3158
@@ -965,7 +965,7 @@ workflow:
         selected: false
         title: IF_RiskExists
         type: if-else
-      height: 147
+      height: 148
       id: '1782631348189'
       position:
         x: 3158
@@ -1036,7 +1036,7 @@ workflow:
         type: llm
         vision:
           enabled: false
-      height: 87
+      height: 88
       id: '1782631375924'
       position:
         x: 3520
@@ -1128,7 +1128,7 @@ workflow:
         type: llm
         vision:
           enabled: false
-      height: 87
+      height: 88
       id: '1782631530854'
       position:
         x: 3520
@@ -1191,7 +1191,7 @@ workflow:
         type: question-classifier
         vision:
           enabled: false
-      height: 303
+      height: 304
       id: '1782631652761'
       position:
         x: 2796
@@ -1210,7 +1210,7 @@ workflow:
         title: Answer_RiskEntry
         type: answer
         variables: []
-      height: 131
+      height: 132
       id: '1782631710077'
       position:
         x: 3158
@@ -1229,7 +1229,7 @@ workflow:
         title: Answer_PlanEntry
         type: answer
         variables: []
-      height: 147
+      height: 148
       id: '1782631712840'
       position:
         x: 3158
@@ -1248,7 +1248,7 @@ workflow:
         title: Answer_ReportEntry
         type: answer
         variables: []
-      height: 131
+      height: 132
       id: '1782631717975'
       position:
         x: 3158
@@ -1267,7 +1267,7 @@ workflow:
         title: Answer_CheckinEntry
         type: answer
         variables: []
-      height: 131
+      height: 132
       id: '1782631720704'
       position:
         x: 3158
@@ -1286,7 +1286,7 @@ workflow:
         title: Answer_EntryFallback
         type: answer
         variables: []
-      height: 131
+      height: 132
       id: '1782631725118'
       position:
         x: 3158
@@ -1361,7 +1361,7 @@ workflow:
         type: llm
         vision:
           enabled: false
-      height: 87
+      height: 88
       id: '1782631830843'
       position:
         x: 2796
@@ -1394,7 +1394,7 @@ workflow:
       type: custom
       width: 242
     viewport:
-      x: -553.6800042082937
-      y: -268.38014496625533
-      zoom: 0.6656742539833764
+      x: -635.9852659928788
+      y: -169.1579783142039
+      zoom: 0.6241652832528567
   rag_pipeline_variables: []
