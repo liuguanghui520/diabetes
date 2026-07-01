@@ -41,11 +41,13 @@ const reportInterpretSchema = z.object({
   report_text: z.string().max(20000).optional(),
   metadata: z.object({}).catchall(z.any()).default({})
 }).superRefine((value, ctx) => {
-  if (!value.report_file_id && !String(value.report_text || '').trim()) {
+  const hasFile = value.report_file_id != null && String(value.report_file_id).trim() !== ''
+  const hasText = String(value.report_text || '').trim() !== ''
+  if (!hasFile && !hasText) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: '请至少提供报告文本或上传报告文件。',
-      path: ['report_text'],
+      path: [],
     })
   }
 })
@@ -301,13 +303,34 @@ export function registerWorkflowRoutes(router, deps, options = {}) {
 
   router.post('/reports/interpret', sensitiveLimiter, auth, validate(reportInterpretSchema), asyncHandler(async (req, res) => {
     const requestId = newRequestId()
-    const uploadMeta = req.body.report_file_id
-      ? await sanitizeAttachmentPayload(store, req.user.id, [{ file_id: req.body.report_file_id }])
+    const rawReportFileId = req.body.report_file_id
+    const uploadMeta = rawReportFileId
+      ? await sanitizeAttachmentPayload(store, req.user.id, [{ file_id: rawReportFileId }])
       : []
+
+    // 构建 Dify files 参数，通过 remote_url 方式传递文件
+    const difyFiles = []
+    for (const file of uploadMeta) {
+      if (file.url) {
+        const fileType = String(file.mime_type || '').startsWith('image/')
+          ? 'image'
+          : 'document'
+
+        difyFiles.push({
+          variable: 'file',
+          transfer_method: 'remote_url',
+          url: file.url,
+          type: fileType,
+        })
+      }
+    }
+
+    // report_file_id 在 Dify 工作流中定义为 number 类型，非数字时传 0
+    const numericFileId = Number.isFinite(Number(rawReportFileId)) ? Number(rawReportFileId) : 0
 
     const inputs = {
       user_id: String(req.user.id),
-      report_file_id: req.body.report_file_id || 0,
+      report_file_id: rawReportFileId ? numericFileId : 0,
       report_text: req.body.report_text || '',
       metadata: {
         ...req.body.metadata,
@@ -317,6 +340,7 @@ export function registerWorkflowRoutes(router, deps, options = {}) {
     await difyClient.enqueueWorkflow('report', inputs, req.user.id, {
       requestId,
       store,
+      files: difyFiles.length > 0 ? difyFiles : undefined,
       async onSuccess(workflowResult) {
         const interpretation = normalizeReportOutput(workflowResult.outputs)
 
