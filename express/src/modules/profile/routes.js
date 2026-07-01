@@ -92,7 +92,10 @@ export function registerProfileRoutes(router, deps) {
       birth_date: req.body.birth_date === undefined ? existing?.birth_date : req.body.birth_date || null
     }
     const bmi = calculateBmi(next.height_cm, next.weight_kg)
-    const ageSnapshot = req.body.age ?? next.age_snapshot ?? calculateAge(next.birth_date)
+    const ageSnapshot = req.body.age
+      ?? (req.body.birth_date !== undefined ? calculateAge(req.body.birth_date || null) : null)
+      ?? next.age_snapshot
+      ?? calculateAge(next.birth_date)
     const profile = await deps.store.upsertProfile(req.user.id, {
       ...next,
       age_snapshot: ageSnapshot,

@@ -1199,21 +1199,25 @@ export function createSqlStore(pool) {
         return null
       }
 
+      const today = todayOnly()
       const taskResult = await pool.query(
         `select
-          id,
-          task_type,
-          title,
-          description as desc,
-          target_value,
-          unit,
-          target_time as time,
-          weekdays,
-          metadata
-         from plan_task
-         where plan_id = $1
-         order by sort_order asc, id asc`,
-        [plan.id]
+          pt.id,
+          pt.task_type,
+          pt.title,
+          pt.description as desc,
+          pt.target_value,
+          pt.unit,
+          pt.target_time as time,
+          pt.weekdays,
+          pt.metadata,
+          ci.status = 'done' as completed
+         from plan_task pt
+         left join checkin_record cr on cr.user_id = $2 and cr.checkin_date = $3
+         left join checkin_item ci on ci.checkin_record_id = cr.id and ci.plan_task_id = pt.id
+         where pt.plan_id = $1
+         order by pt.sort_order asc, pt.id asc`,
+        [plan.id, userId, today]
       )
 
       return {
@@ -1221,8 +1225,7 @@ export function createSqlStore(pool) {
         tasks: taskResult.rows.map((task) => ({
           ...task,
           category: task.task_type,
-          target: [task.target_value, task.unit].filter(Boolean).join('') || task.unit || '1次',
-          completed: false
+          target: [task.target_value, task.unit].filter(Boolean).join('') || task.unit || '1次'
         }))
       }
     },
@@ -1465,29 +1468,52 @@ export function createSqlStore(pool) {
         }
 
         if (completed) {
-          await client.query(
-            `insert into checkin_item
-             (checkin_record_id, plan_task_id, task_type, actual_value, unit, status, detail_text, metadata, created_at)
-             values ($1, $2, $3, $4, $5, 'done', $6, $7::jsonb, current_timestamp)
-             on conflict (checkin_record_id, plan_task_id) do update set
-               status = 'done',
-               actual_value = excluded.actual_value,
-               unit = excluded.unit,
-               detail_text = excluded.detail_text,
-               metadata = excluded.metadata`,
-            [
-              record.id,
-              task.id,
-              task.task_type,
-              input.value === undefined ? 1 : Number.parseFloat(input.value) || 1,
-              input.unit || task.unit || null,
-              input.detail_text || task.title,
-              JSON.stringify({
-                source: input.source || 'plan_task_toggle',
-                recorded_at: input.recorded_at || null
-              })
-            ]
-          )
+          const existing = one(await client.query(
+            `select id from checkin_item
+             where checkin_record_id = $1 and plan_task_id = $2
+             limit 1`,
+            [record.id, task.id]
+          ))
+
+          if (existing) {
+            await client.query(
+              `update checkin_item set
+                 status = 'done',
+                 actual_value = $2,
+                 unit = $3,
+                 detail_text = $4,
+                 metadata = $5::jsonb
+               where id = $1`,
+              [
+                existing.id,
+                input.value === undefined ? 1 : Number.parseFloat(input.value) || 1,
+                input.unit || task.unit || null,
+                input.detail_text || task.title,
+                JSON.stringify({
+                  source: input.source || 'plan_task_toggle',
+                  recorded_at: input.recorded_at || null
+                })
+              ]
+            )
+          } else {
+            await client.query(
+              `insert into checkin_item
+               (checkin_record_id, plan_task_id, task_type, actual_value, unit, status, detail_text, metadata, created_at)
+               values ($1, $2, $3, $4, $5, 'done', $6, $7::jsonb, current_timestamp)`,
+              [
+                record.id,
+                task.id,
+                task.task_type,
+                input.value === undefined ? 1 : Number.parseFloat(input.value) || 1,
+                input.unit || task.unit || null,
+                input.detail_text || task.title,
+                JSON.stringify({
+                  source: input.source || 'plan_task_toggle',
+                  recorded_at: input.recorded_at || null
+                })
+              ]
+            )
+          }
         } else {
           await client.query(
             `delete from checkin_item

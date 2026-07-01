@@ -167,7 +167,13 @@ export function registerRiskRoutes(router, deps) {
       ...profileSnapshot,
       ...scoreResult,
       score_detail: scoreResult.score_detail,
-      missing_fields: scoreResult.missing_fields
+      missing_fields: scoreResult.missing_fields,
+      // Ensure Dify-required fields are never null
+      waist_cm: profileSnapshot.waist_cm ?? 0,
+      sbp_mm_hg: profileSnapshot.sbp_mm_hg ?? 0,
+      score: scoreResult.score ?? 0,
+      risk_level: scoreResult.risk_level || 'low',
+      is_high_risk: scoreResult.is_high_risk ?? false
     }
 
     await enqueueRiskAdvice({
@@ -191,7 +197,8 @@ export function registerRiskRoutes(router, deps) {
   }))
 
   router.get('/risk-assessments/latest', auth, asyncHandler(async (req, res) => {
-    sendOk(res, await store.getLatestRisk(req.user.id))
+    const risk = await store.getLatestRisk(req.user.id)
+    sendOk(res, risk ? responseFromRisk(risk) : null)
   }))
 
   router.get('/risk-assessments', auth, validate(listQuerySchema, 'query'), asyncHandler(async (req, res) => {

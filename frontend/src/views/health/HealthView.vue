@@ -147,6 +147,14 @@ const scoreCard = computed(() => {
   }
 })
 
+const healthAdvice = computed(() => {
+  const risk = latestRisk.value
+  if (!risk || !risk.advice || risk.score_status === 'processing') return null
+  const a = risk.advice
+  if (!a.summary && !a.diet?.length && !a.exercise?.length && !a.review?.length) return null
+  return a
+})
+
 const metricTiles = computed(() => {
   const fasting = numberOrNull(latestMeasurements.value.fasting_glucose)
   const post = numberOrNull(latestMeasurements.value.postprandial_glucose)
@@ -766,6 +774,39 @@ onBeforeUnmount(() => {
               </div>
             </van-grid-item>
           </van-grid>
+
+          <section v-if="healthAdvice" class="advice-section">
+            <div class="section-head">
+              <h2>AI 健康建议</h2>
+            </div>
+
+            <div class="advice-card">
+              <p class="advice-summary">{{ healthAdvice.summary }}</p>
+
+              <div v-if="healthAdvice.diet?.length" class="advice-block">
+                <h4>🥗 饮食建议</h4>
+                <ul>
+                  <li v-for="(tip, i) in healthAdvice.diet" :key="'d'+i">{{ tip }}</li>
+                </ul>
+              </div>
+
+              <div v-if="healthAdvice.exercise?.length" class="advice-block">
+                <h4>🏃 运动建议</h4>
+                <ul>
+                  <li v-for="(tip, i) in healthAdvice.exercise" :key="'e'+i">{{ tip }}</li>
+                </ul>
+              </div>
+
+              <div v-if="healthAdvice.review?.length" class="advice-block">
+                <h4>📋 复查建议</h4>
+                <ul>
+                  <li v-for="(tip, i) in healthAdvice.review" :key="'r'+i">{{ tip }}</li>
+                </ul>
+              </div>
+
+              <p v-if="healthAdvice.warning" class="advice-warning">{{ healthAdvice.warning }}</p>
+            </div>
+          </section>
         </section>
       </div>
 
@@ -1152,5 +1193,54 @@ button:active,
   .score-copy h2 {
     font-size: 17px;
   }
+}
+
+/* ---------- AI 健康建议 ---------- */
+.advice-section {
+  margin-top: 16px;
+}
+
+.advice-card {
+  background: linear-gradient(135deg, #f0f7ff, #f6fbfe);
+  border-radius: 16px;
+  padding: 16px;
+  border: 1px solid rgba(22, 119, 255, 0.1);
+}
+
+.advice-summary {
+  font-size: 14px;
+  color: #333;
+  margin: 0 0 12px;
+  line-height: 1.6;
+}
+
+.advice-block {
+  margin-bottom: 10px;
+}
+
+.advice-block h4 {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1677ff;
+  margin: 0 0 6px;
+}
+
+.advice-block ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.advice-block li {
+  font-size: 13px;
+  color: #555;
+  line-height: 1.7;
+}
+
+.advice-warning {
+  font-size: 12px;
+  color: #999;
+  margin: 10px 0 0;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(0,0,0,.08);
 }
 </style>
