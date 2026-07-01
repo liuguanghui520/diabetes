@@ -4,9 +4,8 @@ import { useRouter } from 'vue-router'
 import {
   CheckCircleFilled,
   ClockCircleOutlined,
+  FundOutlined,
   LeftOutlined,
-  RightOutlined,
-  TrophyOutlined,
 } from '@ant-design/icons-vue'
 import { apiGet } from '../../api/request'
 
@@ -14,6 +13,29 @@ const router = useRouter()
 
 const loading = ref(false)
 const records = ref([])
+const selectedDate = ref('')
+
+const orderedRecords = computed(() => {
+  return [...records.value].sort((a, b) => {
+    return String(b.date).localeCompare(String(a.date))
+  })
+})
+
+const latestRecord = computed(() => {
+  return orderedRecords.value[0] || null
+})
+
+const recordMap = computed(() => {
+  const map = new Map()
+
+  orderedRecords.value.forEach((item) => {
+    if (!map.has(item.date)) {
+      map.set(item.date, item)
+    }
+  })
+
+  return map
+})
 
 const totalDays = computed(() => {
   return records.value.length
@@ -35,16 +57,81 @@ const averageRate = computed(() => {
   return Math.round(total / records.value.length)
 })
 
-const latestRecord = computed(() => {
-  return records.value[0] || null
+const calendarAnchorDate = computed(() => {
+  return parseLocalDate(latestRecord.value?.date) || getToday()
 })
 
-function clampRate(value) {
+const calendarStartDate = computed(() => {
+  return addDays(calendarAnchorDate.value, -29)
+})
+
+const rangeText = computed(() => {
+  return `${formatMonthDay(calendarStartDate.value)} - ${formatMonthDay(calendarAnchorDate.value)}`
+})
+
+const calendarGrid = computed(() => {
+  const startDate = calendarStartDate.value
+  const leadingEmptyCount = getMondayIndex(startDate)
+  const cells = []
+
+  for (let index = 0; index < leadingEmptyCount; index += 1) {
+    cells.push({
+      key: `empty-start-${index}`,
+      placeholder: true,
+    })
+  }
+
+  for (let index = 0; index < 30; index += 1) {
+    const date = addDays(startDate, index)
+    const dateKey = formatDateKey(date)
+    const record = recordMap.value.get(dateKey) || null
+
+    cells.push({
+      key: dateKey,
+      placeholder: false,
+      date: dateKey,
+      day: date.getDate(),
+      record,
+    })
+  }
+
+  const trailingEmptyCount = (7 - (cells.length % 7)) % 7
+
+  for (let index = 0; index < trailingEmptyCount; index += 1) {
+    cells.push({
+      key: `empty-end-${index}`,
+      placeholder: true,
+    })
+  }
+
+  return cells
+})
+
+const selectedInfo = computed(() => {
+  const record = recordMap.value.get(selectedDate.value) || null
+  const selected = parseLocalDate(selectedDate.value)
+    || calendarAnchorDate.value
+
+  return {
+    date: selectedDate.value || formatDateKey(calendarAnchorDate.value),
+    dateText: formatDate(selected),
+    record,
+    rate: record?.rate || 0,
+    completedCount: record?.completedCount || 0,
+    totalCount: record?.totalCount || 0,
+    status: getStatusText(record),
+    statusClass: getStatusClass(record),
+  }
+})
+
+function toSafeNumber(value) {
   const number = Number(value)
 
-  if (!Number.isFinite(number)) {
-    return 0
-  }
+  return Number.isFinite(number) ? number : 0
+}
+
+function clampRate(value) {
+  const number = toSafeNumber(value)
 
   if (number > 0 && number <= 1) {
     return Math.round(number * 100)
@@ -53,20 +140,116 @@ function clampRate(value) {
   return Math.max(0, Math.min(100, Math.round(number)))
 }
 
-function normalizeRecord(item, index) {
-  const totalCount = Number(
-    item.task_count
-      ?? item.total_count
-      ?? item.total
-      ?? 0,
+function parseLocalDate(value) {
+  const text = String(value || '').slice(0, 10)
+  const match = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+
+  if (!match) {
+    return null
+  }
+
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+
+  const date = new Date(year, month - 1, day)
+
+  if (
+    Number.isNaN(date.getTime())
+    || date.getFullYear() !== year
+    || date.getMonth() + 1 !== month
+    || date.getDate() !== day
+  ) {
+    return null
+  }
+
+  return date
+}
+
+function getToday() {
+  const now = new Date()
+
+  return new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+  )
+}
+
+function addDays(date, days) {
+  const result = new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
   )
 
-  const completedCount = Number(
-    item.completed_count
+  result.setDate(result.getDate() + days)
+
+  return result
+}
+
+function getMondayIndex(date) {
+  return (date.getDay() + 6) % 7
+}
+
+function formatDateKey(date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
+
+function formatMonthDay(date) {
+  return `${date.getMonth() + 1}月${date.getDate()}日`
+}
+
+function formatDate(value) {
+  const date = value instanceof Date
+    ? value
+    : parseLocalDate(value)
+
+  if (!date) {
+    return '暂无日期'
+  }
+
+  const weekList = [
+    '周日',
+    '周一',
+    '周二',
+    '周三',
+    '周四',
+    '周五',
+    '周六',
+  ]
+
+  return `${date.getMonth() + 1}月${date.getDate()}日${weekList[date.getDay()]}`
+}
+
+function normalizeRecord(item, index) {
+  const totalCount = Math.max(
+    0,
+    toSafeNumber(
+      item.task_count
+      ?? item.total_count
+      ?? item.total
+      ?? item.taskCount,
+    ),
+  )
+
+  const completedRaw = Math.max(
+    0,
+    toSafeNumber(
+      item.completed_count
       ?? item.completed
       ?? item.done_count
-      ?? 0,
+      ?? item.completedCount,
+    ),
   )
+
+  const completedCount = totalCount > 0
+    ? Math.min(completedRaw, totalCount)
+    : completedRaw
 
   const directRate = item.completion_rate
     ?? item.rate
@@ -87,50 +270,44 @@ function normalizeRecord(item, index) {
   }
 }
 
-function formatDate(value) {
-  if (!value) {
-    return '未知日期'
-  }
-
-  const date = new Date(`${value}T00:00:00`)
-
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-
-  return new Intl.DateTimeFormat('zh-CN', {
-    month: 'long',
-    day: 'numeric',
-    weekday: 'short',
-  }).format(date)
-}
-
-function getStatusText(item) {
-  if (item.totalCount <= 0) {
+function getStatusText(record) {
+  if (!record || record.totalCount <= 0) {
     return '暂无任务'
   }
 
-  if (item.rate >= 100) {
+  if (record.rate >= 100) {
     return '已完成'
   }
 
-  if (item.rate > 0) {
+  if (record.rate > 0) {
     return '部分完成'
   }
 
   return '未完成'
 }
 
-function getStatusClass(item) {
-  if (item.rate >= 100) {
+function getStatusClass(record) {
+  if (!record || record.totalCount <= 0 || record.rate <= 0) {
+    return 'pending'
+  }
+
+  if (record.rate >= 100) {
     return 'complete'
   }
 
-  if (item.rate > 0) {
-    return 'partial'
+  return 'partial'
+}
+
+function getDayRateText(record) {
+  if (!record || record.totalCount <= 0) {
+    return '—'
   }
 
-  return 'pending'
+  return `${record.rate}%`
+}
+
+function selectDate(date) {
+  selectedDate.value = date
 }
 
 function goBack() {
@@ -161,13 +338,20 @@ async function loadRecords() {
       || result.data
       || []
 
-    records.value = Array.isArray(source)
+    const normalized = Array.isArray(source)
       ? source
         .map(normalizeRecord)
+        .filter((item) => item.date)
         .sort((a, b) => String(b.date).localeCompare(String(a.date)))
       : []
+
+    records.value = normalized
+
+    selectedDate.value = normalized[0]?.date
+      || formatDateKey(getToday())
   } catch {
     records.value = []
+    selectedDate.value = formatDateKey(getToday())
   } finally {
     loading.value = false
   }
@@ -182,7 +366,8 @@ onMounted(loadRecords)
       <header class="records-nav">
         <button
           type="button"
-          aria-label="返回"
+          class="nav-back"
+          aria-label="返回生活方案"
           @click="goBack"
         >
           <LeftOutlined />
@@ -190,112 +375,178 @@ onMounted(loadRecords)
 
         <strong>打卡记录</strong>
 
-        <button type="button" class="analysis-nav-btn" @click="openAnalysis">
-          <TrophyOutlined />
-          分析
+        <button
+          type="button"
+          class="analysis-nav-button"
+          aria-label="查看打卡分析"
+          title="打卡分析"
+          @click="openAnalysis"
+        >
+          <FundOutlined />
         </button>
       </header>
 
       <div class="records-scroll">
         <section class="record-summary">
           <div class="summary-copy">
-            <span>近 30 天打卡情况</span>
+            <span>近 30 天任务完成率</span>
+
             <strong>{{ averageRate }}%</strong>
+
             <small>平均任务完成率</small>
           </div>
 
           <div class="summary-side">
-            <span>
-              {{ completedDays }}
-              <small>天完成</small>
-            </span>
-
-            <span>
-              {{ totalDays }}
-              <small>条记录</small>
-            </span>
-          </div>
-        </section>
-
-        <section class="latest-card">
-          <span class="latest-icon">
-            <CheckCircleFilled />
-          </span>
-
-          <div>
-            <strong>
-              {{ latestRecord ? formatDate(latestRecord.date) : '暂未生成打卡记录' }}
-            </strong>
-
-            <small>
-              {{
-                latestRecord
-                  ? `完成率 ${latestRecord.rate}% · ${getStatusText(latestRecord)}`
-                  : '完成每日任务后，系统会自动生成记录。'
-              }}
-            </small>
-          </div>
-        </section>
-
-        <section class="records-section">
-          <header class="section-heading">
             <div>
-              <span>每日记录</span>
-              <h2>最近 30 天</h2>
+              <strong>{{ completedDays }}</strong>
+              <span>天完成</span>
             </div>
 
-            <small>{{ totalDays }} 条</small>
+            <div>
+              <strong>{{ totalDays }}</strong>
+              <span>条记录</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="calendar-section">
+          <header class="section-heading">
+            <div>
+              <span>每日打卡</span>
+              <h2>近 30 天</h2>
+            </div>
+
+            <small>{{ rangeText }}</small>
           </header>
 
           <div
             v-if="loading"
-            class="record-empty"
+            class="calendar-loading"
           >
             正在加载打卡记录…
           </div>
 
           <div
-            v-else-if="records.length === 0"
-            class="record-empty"
+            v-else
+            class="calendar-card"
           >
-            <ClockCircleOutlined />
-
-            <strong>还没有打卡记录</strong>
-
-            <small>完成生活方案中的任务后，这里会自动保留每日记录。</small>
-          </div>
-
-          <article
-            v-for="item in records"
-            :key="item.id"
-            class="record-row"
-          >
-            <div class="record-date">
-              <strong>{{ formatDate(item.date) }}</strong>
-
-              <small>
-                {{
-                  item.totalCount > 0
-                    ? `${item.completedCount}/${item.totalCount} 项任务完成`
-                    : '暂无任务安排'
-                }}
-              </small>
+            <div class="calendar-weekdays">
+              <span>一</span>
+              <span>二</span>
+              <span>三</span>
+              <span>四</span>
+              <span>五</span>
+              <span>六</span>
+              <span>日</span>
             </div>
 
-            <div class="record-progress">
-              <span
-                class="record-status"
-                :class="getStatusClass(item)"
+            <div class="calendar-grid">
+              <template
+                v-for="cell in calendarGrid"
+                :key="cell.key"
               >
-                {{ getStatusText(item) }}
+                <span
+                  v-if="cell.placeholder"
+                  class="calendar-empty"
+                ></span>
+
+                <button
+                  v-else
+                  type="button"
+                  class="calendar-day"
+                  :class="[
+                    getStatusClass(cell.record),
+                    {
+                      selected: selectedDate === cell.date,
+                    },
+                  ]"
+                  :aria-label="`${formatDate(cell.date)}，${getDayRateText(cell.record)}`"
+                  @click="selectDate(cell.date)"
+                >
+                  <strong>{{ cell.day }}</strong>
+                  <small>{{ getDayRateText(cell.record) }}</small>
+                </button>
+              </template>
+            </div>
+
+            <div class="calendar-legend">
+              <span>
+                <i class="complete"></i>
+                已完成
               </span>
 
-              <strong>{{ item.rate }}%</strong>
+              <span>
+                <i class="partial"></i>
+                部分完成
+              </span>
+
+              <span>
+                <i class="pending"></i>
+                未完成
+              </span>
             </div>
-          </article>
+          </div>
         </section>
 
+        <section class="selected-record-card">
+          <div class="selected-record-top">
+            <div>
+              <span>选中日期</span>
+              <strong>{{ selectedInfo.dateText }}</strong>
+            </div>
 
+            <em :class="selectedInfo.statusClass">
+              {{ selectedInfo.status }}
+            </em>
+          </div>
+
+          <div class="selected-record-main">
+            <div>
+              <strong>{{ selectedInfo.rate }}%</strong>
+              <span>任务完成率</span>
+            </div>
+
+            <p>
+              {{
+                selectedInfo.totalCount > 0
+                  ? `已完成 ${selectedInfo.completedCount} / ${selectedInfo.totalCount} 项任务`
+                  : '当天暂无任务安排'
+              }}
+            </p>
+          </div>
+
+          <van-progress
+            :percentage="selectedInfo.rate"
+            :show-pivot="false"
+            stroke-width="7"
+            color="#1677ff"
+            track-color="#dfe8f4"
+          />
+        </section>
+
+        <section
+          v-if="latestRecord"
+          class="latest-hint"
+        >
+          <CheckCircleFilled />
+
+          <span>
+            最新记录：{{ formatDate(latestRecord.date) }}，完成率 {{ latestRecord.rate }}%
+          </span>
+        </section>
+
+        <section
+          v-else-if="!loading"
+          class="empty-record"
+        >
+          <ClockCircleOutlined />
+
+          <strong>还没有打卡记录</strong>
+
+          <small>
+            完成生活方案中的任务后，这里会自动生成每日打卡记录。
+          </small>
+        </section>
       </div>
     </section>
   </main>
@@ -325,56 +576,63 @@ onMounted(loadRecords)
 
 .records-nav {
   display: grid;
-  height: 54px;
+  height: 56px;
   flex: 0 0 auto;
   grid-template-columns: 46px minmax(0, 1fr) 46px;
   align-items: center;
-  background: transparent;
-}
-
-.records-nav button {
-  display: grid;
-  width: 38px;
-  height: 38px;
-  place-items: center;
-  justify-self: center;
-  border: 0;
-  border-radius: 50%;
-  color: #17243a;
-  background: transparent;
-  cursor: pointer;
-  font-size: 20px;
-}
-
-.records-nav button:active {
-  background: #eaf3ff;
+  padding: 0 10px;
+  background: rgba(246, 248, 252, 0.98);
 }
 
 .records-nav strong {
   color: #17243a;
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 900;
   text-align: center;
 }
 
-.analysis-nav-btn {
-  display: flex !important;
-  width: auto !important;
-  height: auto !important;
-  gap: 3px;
-  padding: 4px 10px;
-  border-radius: 14px !important;
-  font-size: 12px !important;
-  font-weight: 600;
-  color: #1677ff !important;
-  background: #eaf3ff !important;
+.nav-back,
+.analysis-nav-button {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 0;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.nav-back {
+  justify-self: center;
+  color: #17243a;
+  background: transparent;
+  font-size: 21px;
+}
+
+.analysis-nav-button {
+  justify-self: center;
+  color: #1677ff;
+  background: #eaf3ff;
+  font-size: 18px;
+  transition:
+    background 0.16s ease,
+    transform 0.16s ease;
+}
+
+.nav-back:active {
+  background: #eaf3ff;
+}
+
+.analysis-nav-button:active {
+  background: #dceeff;
+  transform: scale(0.92);
 }
 
 .records-scroll {
   min-height: 0;
   flex: 1;
   overflow-y: auto;
-  padding: 10px 16px 30px;
+  padding: 12px 16px 32px;
   scrollbar-width: none;
 }
 
@@ -387,10 +645,11 @@ onMounted(loadRecords)
   align-items: stretch;
   justify-content: space-between;
   gap: 14px;
+  border: 1px solid #dceafa;
   border-radius: 21px;
   padding: 18px;
   background:
-    radial-gradient(circle at 100% 0%, rgba(22, 119, 255, 0.14), transparent 40%),
+    radial-gradient(circle at 100% 0%, rgba(22, 119, 255, 0.14), transparent 43%),
     linear-gradient(135deg, #ffffff, #edf6ff);
   box-shadow: 0 10px 22px rgba(45, 89, 142, 0.07);
 }
@@ -407,7 +666,7 @@ onMounted(loadRecords)
   display: block;
   margin: 8px 0 4px;
   color: #1677ff;
-  font-size: 39px;
+  font-size: 43px;
   font-weight: 900;
   letter-spacing: -2px;
   line-height: 1;
@@ -415,76 +674,36 @@ onMounted(loadRecords)
 
 .summary-side {
   display: grid;
-  min-width: 102px;
+  min-width: 112px;
   grid-template-columns: repeat(2, 1fr);
   gap: 8px;
   align-content: center;
 }
 
-.summary-side span {
+.summary-side div {
   display: flex;
+  min-width: 0;
   align-items: center;
   flex-direction: column;
   justify-content: center;
-  border-radius: 13px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.summary-side strong {
   color: #25364d;
-  background: rgba(255, 255, 255, 0.76);
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 900;
 }
 
-.summary-side small {
+.summary-side span {
   margin-top: 4px;
   color: #7c90a8;
   font-size: 9px;
-  font-weight: 750;
+  font-weight: 800;
 }
 
-.latest-card {
-  display: grid;
-  grid-template-columns: 38px minmax(0, 1fr);
-  gap: 10px;
-  align-items: center;
-  margin-top: 14px;
-  border-radius: 16px;
-  padding: 13px;
-  background: #ffffff;
-  box-shadow: 0 7px 17px rgba(45, 89, 142, 0.05);
-}
-
-.latest-icon {
-  display: grid;
-  width: 36px;
-  height: 36px;
-  place-items: center;
-  border-radius: 12px;
-  color: #00a870;
-  background: #e6f8f0;
-  font-size: 18px;
-}
-
-.latest-card strong,
-.latest-card small {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.latest-card strong {
-  color: #25364d;
-  font-size: 13px;
-  font-weight: 900;
-}
-
-.latest-card small {
-  margin-top: 4px;
-  color: #8799af;
-  font-size: 10px;
-  font-weight: 750;
-}
-
-.records-section {
+.calendar-section {
   margin-top: 25px;
 }
 
@@ -506,114 +725,294 @@ onMounted(loadRecords)
 .section-heading h2 {
   margin: 5px 0 0;
   color: #17243a;
-  font-size: 19px;
+  font-size: 21px;
   font-weight: 900;
 }
 
 .section-heading small {
-  color: #8598b0;
-  font-size: 11px;
+  margin-bottom: 2px;
+  color: #8b9aae;
+  font-size: 10px;
   font-weight: 800;
 }
 
-.record-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  margin-top: 10px;
-  border-radius: 16px;
-  padding: 14px;
+.calendar-loading {
+  display: grid;
+  min-height: 220px;
+  place-items: center;
+  border-radius: 18px;
+  color: #8394aa;
   background: #ffffff;
-  box-shadow: 0 7px 17px rgba(45, 89, 142, 0.05);
+  font-size: 12px;
+  font-weight: 800;
+  box-shadow: 0 8px 18px rgba(45, 89, 142, 0.05);
 }
 
-.record-date {
-  min-width: 0;
-}
-
-.record-date strong,
-.record-date small {
-  display: block;
+.calendar-card {
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  border-radius: 19px;
+  padding: 14px 12px 12px;
+  background: #ffffff;
+  box-shadow: 0 8px 18px rgba(45, 89, 142, 0.06);
 }
 
-.record-date strong {
-  color: #25364d;
-  font-size: 13px;
-  font-weight: 900;
-}
-
-.record-date small {
-  margin-top: 5px;
-  color: #8999ad;
-  font-size: 10px;
-  font-weight: 750;
-}
-
-.record-progress {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: flex-end;
-  flex-direction: column;
+.calendar-weekdays,
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 6px;
 }
 
-.record-progress strong {
-  color: #1677ff;
-  font-size: 17px;
-  font-weight: 900;
+.calendar-weekdays {
+  margin-bottom: 8px;
 }
 
-.record-status {
-  border-radius: 999px;
-  padding: 4px 8px;
+.calendar-weekdays span {
+  color: #9aa8b8;
+  font-size: 10px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.calendar-day,
+.calendar-empty {
+  min-width: 0;
+  aspect-ratio: 1 / 0.96;
+}
+
+.calendar-day {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  justify-content: center;
+  border: 0;
+  border-radius: 12px;
+  cursor: pointer;
+  transition:
+    transform 0.16s ease,
+    box-shadow 0.16s ease,
+    background 0.16s ease;
+}
+
+.calendar-day:active {
+  transform: scale(0.92);
+}
+
+.calendar-day strong {
+  color: #52657d;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.calendar-day small {
+  margin-top: 4px;
+  color: #91a1b4;
+  font-size: 8px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.calendar-day.complete {
+  background: #e6f8f0;
+}
+
+.calendar-day.complete strong,
+.calendar-day.complete small {
+  color: #00a870;
+}
+
+.calendar-day.partial {
+  background: #fff3df;
+}
+
+.calendar-day.partial strong,
+.calendar-day.partial small {
+  color: #e68800;
+}
+
+.calendar-day.pending {
+  background: #f1f5f9;
+}
+
+.calendar-day.selected {
+  color: #ffffff;
+  background: #1677ff;
+  box-shadow: 0 7px 13px rgba(22, 119, 255, 0.24);
+}
+
+.calendar-day.selected strong,
+.calendar-day.selected small {
+  color: #ffffff;
+}
+
+.calendar-legend {
+  display: flex;
+  justify-content: center;
+  gap: 13px;
+  margin-top: 13px;
+  color: #8c9caf;
   font-size: 9px;
+  font-weight: 800;
+}
+
+.calendar-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.calendar-legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+}
+
+.calendar-legend .complete {
+  background: #00a870;
+}
+
+.calendar-legend .partial {
+  background: #f0a120;
+}
+
+.calendar-legend .pending {
+  background: #c4d0de;
+}
+
+.selected-record-card {
+  margin-top: 16px;
+  border-radius: 18px;
+  padding: 16px;
+  background: #ffffff;
+  box-shadow: 0 8px 18px rgba(45, 89, 142, 0.06);
+}
+
+.selected-record-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.selected-record-top span {
+  display: block;
+  color: #8798ad;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.selected-record-top strong {
+  display: block;
+  margin-top: 5px;
+  color: #25364d;
+  font-size: 15px;
   font-weight: 900;
 }
 
-.record-status.complete {
+.selected-record-top em {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.selected-record-top em.complete {
   color: #00a870;
   background: #e6f8f0;
 }
 
-.record-status.partial {
+.selected-record-top em.partial {
   color: #e68800;
   background: #fff3df;
 }
 
-.record-status.pending {
-  color: #7d8ea4;
+.selected-record-top em.pending {
+  color: #7f8fa3;
   background: #eef2f6;
 }
 
-.record-empty {
+.selected-record-main {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 18px 0 12px;
+}
+
+.selected-record-main strong,
+.selected-record-main span {
+  display: block;
+}
+
+.selected-record-main strong {
+  color: #1677ff;
+  font-size: 31px;
+  font-weight: 900;
+  letter-spacing: -1px;
+  line-height: 1;
+}
+
+.selected-record-main span {
+  margin-top: 5px;
+  color: #8395aa;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.selected-record-main p {
+  max-width: 180px;
+  margin: 0 0 2px;
+  color: #6e829b;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.5;
+  text-align: right;
+}
+
+.latest-hint {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 14px;
+  color: #7d90a7;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.latest-hint svg {
+  color: #00a870;
+  font-size: 15px;
+}
+
+.empty-record {
   display: grid;
   min-height: 170px;
   place-items: center;
   align-content: center;
   gap: 8px;
-  border-radius: 16px;
+  margin-top: 16px;
+  border-radius: 18px;
   color: #8a9aae;
   background: #ffffff;
   box-shadow: 0 7px 17px rgba(45, 89, 142, 0.05);
   text-align: center;
 }
 
-.record-empty svg {
+.empty-record svg {
   color: #b6cde8;
   font-size: 29px;
 }
 
-.record-empty strong {
+.empty-record strong {
   color: #60758f;
   font-size: 13px;
   font-weight: 900;
 }
 
-.record-empty small {
+.empty-record small {
   max-width: 240px;
   color: #9aa8b8;
   font-size: 10px;
@@ -621,60 +1020,45 @@ onMounted(loadRecords)
   line-height: 1.55;
 }
 
-.analysis-entry {
-  display: grid;
-  width: 100%;
-  grid-template-columns: 42px minmax(0, 1fr) 18px;
-  gap: 11px;
-  align-items: center;
-  margin-top: 23px;
-  border: 0;
-  border-radius: 17px;
-  padding: 14px;
-  color: #9cafc6;
-  background: #ffffff;
-  box-shadow: 0 8px 18px rgba(45, 89, 142, 0.06);
-  cursor: pointer;
-  text-align: left;
-}
+@media (max-width: 360px) {
+  .records-scroll {
+    padding-right: 13px;
+    padding-left: 13px;
+  }
 
-.analysis-entry:active {
-  background: #f7fbff;
-}
+  .record-summary {
+    gap: 10px;
+    padding: 15px;
+  }
 
-.analysis-icon {
-  display: grid;
-  width: 40px;
-  height: 40px;
-  place-items: center;
-  border-radius: 13px;
-  color: #7c3aed;
-  background: #f0e9ff;
-  font-size: 19px;
-}
+  .summary-side {
+    min-width: 100px;
+  }
 
-.analysis-copy {
-  min-width: 0;
-}
+  .calendar-card {
+    padding-right: 9px;
+    padding-left: 9px;
+  }
 
-.analysis-copy strong,
-.analysis-copy small {
-  display: block;
-}
+  .calendar-grid {
+    gap: 4px;
+  }
 
-.analysis-copy strong {
-  color: #25364d;
-  font-size: 14px;
-  font-weight: 900;
-}
+  .calendar-day {
+    border-radius: 10px;
+  }
 
-.analysis-copy small {
-  overflow: hidden;
-  margin-top: 4px;
-  color: #8999ad;
-  font-size: 10px;
-  font-weight: 750;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  .calendar-day strong {
+    font-size: 11px;
+  }
+
+  .calendar-day small {
+    font-size: 7px;
+  }
+
+  .calendar-legend {
+    gap: 8px;
+    font-size: 8px;
+  }
 }
 </style>

@@ -109,16 +109,6 @@ const completionRate = computed(() => {
   return Math.round((completedCount.value / totalCount.value) * 100)
 })
 
-const planTitle = computed(() => {
-  return plan.value?.title || '今日生活方案'
-})
-
-const planSummary = computed(() => {
-  return plan.value?.goal_summary
-    || plan.value?.summary
-    || '生成个性化方案后，系统会根据你的健康档案安排每日任务。'
-})
-
 const planStatusText = computed(() => {
   if (!totalCount.value) {
     return '待生成'
@@ -301,9 +291,9 @@ onMounted(loadPlan)
       <div class="plan-scroll">
         <section class="plan-overview">
           <header class="overview-head">
-            <div>
+            <div class="overview-title-group">
               <span>{{ currentDateText }}</span>
-              <h2>{{ planTitle }}</h2>
+              <h2>今日生活方案</h2>
             </div>
 
             <span
@@ -317,7 +307,7 @@ onMounted(loadPlan)
           </header>
 
           <p class="overview-summary">
-            {{ planSummary }}
+            生成个性化方案后，系统会根据你的健康档案安排每日任务。
           </p>
 
           <div class="overview-progress">
@@ -346,7 +336,7 @@ onMounted(loadPlan)
               @click="generatePlan"
             >
               <RobotOutlined />
-              {{ plan?.id ? '重新生成方案' : 'AI 生成方案' }}
+              AI 生成方案
             </van-button>
 
             <van-button
@@ -522,6 +512,7 @@ onMounted(loadPlan)
 }
 
 .plan-overview {
+  overflow: hidden;
   border: 1px solid #dceafa;
   border-radius: 20px;
   padding: 16px;
@@ -533,9 +524,15 @@ onMounted(loadPlan)
 
 .overview-head {
   display: flex;
+  min-width: 0;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
+}
+
+.overview-title-group {
+  min-width: 0;
+  flex: 1;
 }
 
 .overview-head span,
@@ -550,20 +547,26 @@ onMounted(loadPlan)
   overflow: hidden;
   margin: 5px 0 0;
   color: #17243a;
-  font-size: 18px;
+  font-size: 19px;
   font-weight: 900;
+  line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .overview-status {
   flex: 0 0 auto;
+  max-width: 76px;
+  overflow: hidden;
   border-radius: 999px;
   padding: 5px 9px;
   color: #1677ff !important;
   background: #eaf3ff;
   font-size: 10px !important;
   font-weight: 900 !important;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .overview-status.complete {
@@ -574,6 +577,7 @@ onMounted(loadPlan)
 .overview-summary {
   display: -webkit-box;
   overflow: hidden;
+  min-height: 38px;
   margin: 12px 0 0;
   color: #71859e;
   font-size: 12px;
@@ -585,6 +589,7 @@ onMounted(loadPlan)
 
 .overview-progress {
   display: flex;
+  min-width: 0;
   align-items: flex-end;
   justify-content: space-between;
   gap: 12px;
@@ -592,6 +597,9 @@ onMounted(loadPlan)
 }
 
 .overview-progress strong {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: baseline;
   color: #1677ff;
   font-size: 39px;
   font-weight: 900;
@@ -600,33 +608,49 @@ onMounted(loadPlan)
 }
 
 .overview-progress strong small {
+  margin-left: 4px;
   color: #6d84a0;
   font-size: 15px;
+  font-weight: 900;
   letter-spacing: 0;
 }
 
-.overview-progress span {
+.overview-progress > span {
+  overflow: hidden;
   margin-bottom: 3px;
   color: #7890aa;
   font-size: 11px;
   font-weight: 800;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .overview-actions {
   display: grid;
-  grid-template-columns: 1.15fr 1fr;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
   gap: 10px;
   margin-top: 16px;
 }
 
 .overview-actions :deep(.van-button) {
+  min-width: 0;
   height: 40px;
   font-size: 12px;
   font-weight: 900;
 }
 
 .overview-actions :deep(.van-button__content) {
+  min-width: 0;
   gap: 5px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.overview-actions :deep(.van-button__text) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .today-section {
@@ -635,6 +659,7 @@ onMounted(loadPlan)
 
 .section-heading {
   display: flex;
+  min-width: 0;
   align-items: flex-end;
   justify-content: space-between;
   gap: 12px;
@@ -649,6 +674,7 @@ onMounted(loadPlan)
 }
 
 .section-heading small {
+  flex: 0 0 auto;
   color: #8193a9;
   font-size: 11px;
   font-weight: 800;
@@ -873,6 +899,16 @@ onMounted(loadPlan)
 
   .plan-nav h1 {
     font-size: 18px;
+  }
+
+  .overview-head h2 {
+    font-size: 18px;
+  }
+
+  .overview-status {
+    max-width: 68px;
+    padding-right: 8px;
+    padding-left: 8px;
   }
 
   .overview-actions {

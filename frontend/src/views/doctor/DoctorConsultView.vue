@@ -37,6 +37,36 @@ const readDoctorIds = ref(new Set())
 const conversationIds = reactive({})
 const loadingConversation = ref(false)
 
+const showEmojiPanel = ref(false)
+const activeEmojiGroup = ref('常用')
+
+const emojiGroups = [
+  {
+    name: '常用',
+    list: [
+      '😀', '😁', '😊', '🙂', '😉', '🥰',
+      '😌', '🤔', '😮', '😢', '😭', '😴',
+      '👍', '👎', '🙏', '💪', '❤️', '🌹',
+    ],
+  },
+  {
+    name: '健康',
+    list: [
+      '🩺', '💊', '🩸', '🧪', '📈', '📉',
+      '⚕️', '🏥', '💉', '🩹', '🌡️', '🧬',
+      '✅', '⚠️', '❗', '💧', '🍎', '🥗',
+    ],
+  },
+  {
+    name: '生活',
+    list: [
+      '🍚', '🥛', '🥚', '🍗', '🥦', '🍊',
+      '🚶', '🏃', '🧘', '🏊', '🌙', '☀️',
+      '📅', '📝', '⏰', '🎯', '🎉', '🌈',
+    ],
+  },
+]
+
 const filterOrder = [
   '全部',
   '内分泌',
@@ -92,6 +122,14 @@ const currentMessages = computed(() => {
   return getThread(activeDoctor.value)
 })
 
+const currentEmojiList = computed(() => {
+  const group = emojiGroups.find((item) => {
+    return item.name === activeEmojiGroup.value
+  })
+
+  return group?.list || emojiGroups[0].list
+})
+
 function getUnreadCount(doctor) {
   return readDoctorIds.value.has(doctor.id)
     ? 0
@@ -106,8 +144,13 @@ function showToast(text) {
   }, 2200)
 }
 
+function closeEmojiPanel() {
+  showEmojiPanel.value = false
+}
+
 function goBack() {
   if (pageMode.value === 'chat') {
+    showEmojiPanel.value = false
     pageMode.value = 'list'
     return
   }
@@ -191,7 +234,13 @@ async function scrollToBottom() {
 }
 
 async function openChat(doctor) {
+  if (!doctor?.id) {
+    showToast('当前医生信息暂不可用。')
+    return
+  }
+
   activeDoctor.value = doctor.id
+  showEmojiPanel.value = false
 
   if (doctor.unread) {
     readDoctorIds.value = new Set([
@@ -201,12 +250,17 @@ async function openChat(doctor) {
   }
 
   await loadDoctorConversation(doctor)
+
   pageMode.value = 'chat'
 
   await scrollToBottom()
 }
 
 function openDoctorProfile(doctor) {
+  if (!doctor?.id) {
+    return
+  }
+
   router.push({
     name: 'doctorProfile',
     params: {
@@ -255,6 +309,7 @@ async function readSse(response, target) {
 
       target.content += delta
       target.html = renderChatHtml(target.content).html
+
       await scrollToBottom()
     },
     async onMessageEnd(data) {
@@ -287,6 +342,7 @@ async function loadDoctorConversation(doctor) {
     const result = await apiGet(
       `/api/doctors/${doctor.id}/conversations/${currentConversation.id}/messages`,
     )
+
     const serverMessages = (result.data || []).map((messageItem) => {
       if (messageItem.role === 'assistant') {
         return decorateAssistantMessage(messageItem.content || '')
@@ -351,6 +407,7 @@ async function sendDoctorMessage(preset = '') {
 
   message.value = ''
   pendingFiles.value = []
+  showEmojiPanel.value = false
   sending.value = true
 
   await scrollToBottom()
@@ -361,6 +418,7 @@ async function sendDoctorMessage(preset = '') {
     for (const file of files) {
       if (file.raw instanceof File) {
         const uploaded = await uploadSingleFile(file.raw, 'doctor')
+
         uploadedAttachments.push({
           file_id: uploaded.file_id,
           name: uploaded.file_name,
@@ -400,15 +458,21 @@ async function sendDoctorMessage(preset = '') {
       reply.content = payload.data?.reply
         || payload.data?.answer
         || '已收到咨询，我会按医学参考思路帮你梳理。'
+
       reply.html = renderChatHtml(reply.content).html
-      conversationIds[activeDoctor.value] = payload.data?.conversation_id || conversationIds[activeDoctor.value] || null
+
+      conversationIds[activeDoctor.value] = payload.data?.conversation_id
+        || conversationIds[activeDoctor.value]
+        || null
     }
   } catch (error) {
     reply.content = '医生咨询助手暂时不可用。急性不适或明显异常指标，请优先线下就医。'
     reply.html = renderChatHtml(reply.content).html
+
     showToast(error.message || '发送失败。')
   } finally {
     sending.value = false
+
     await scrollToBottom()
   }
 }
@@ -419,8 +483,20 @@ function fillSummaryPrompt() {
   showToast('已填入病情摘要模板。')
 }
 
+function selectEmoji(emoji) {
+  message.value = `${message.value}${emoji}`
+
+  nextTick(() => {
+    const input = document.querySelector('input[name="doctor_message"]')
+
+    input?.focus()
+  })
+}
+
 function handleTool(type) {
   if (type === 'image' || type === 'photo' || type === 'file') {
+    showEmojiPanel.value = false
+
     doctorFileAccept.value = type === 'image' || type === 'photo'
       ? 'image/*'
       : '.pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg'
@@ -430,7 +506,7 @@ function handleTool(type) {
   }
 
   if (type === 'emoji') {
-    message.value = `${message.value} 🙂`.trimStart()
+    showEmojiPanel.value = !showEmojiPanel.value
     return
   }
 
@@ -471,7 +547,9 @@ function normalizeDoctor(item, index) {
       .split(/[、,，\s]+/)
       .filter(Boolean),
   ]
-    .filter((item, index, array) => array.indexOf(item) === index)
+    .filter((tag, tagIndex, array) => {
+      return array.indexOf(tag) === tagIndex
+    })
     .slice(0, 4)
 
   return {
@@ -621,6 +699,7 @@ onMounted(async () => {
             <div class="doctor-content">
               <div class="doctor-meta">
                 <span>{{ doctor.department || '慢病管理门诊' }}</span>
+
                 <em :class="{ offline: doctor.status === '离线' }">
                   {{ doctor.status }}
                 </em>
@@ -711,6 +790,7 @@ onMounted(async () => {
                 class="doctor-rich"
                 v-html="item.html || renderChatHtml(item.content || '正在整理回复…').html"
               ></div>
+
               <p v-else>{{ item.content || '正在整理回复…' }}</p>
 
               <span
@@ -721,6 +801,13 @@ onMounted(async () => {
               </span>
             </article>
           </template>
+
+          <div
+            v-if="loadingConversation"
+            class="conversation-loading"
+          >
+            正在加载历史咨询记录…
+          </div>
         </section>
       </section>
 
@@ -729,6 +816,50 @@ onMounted(async () => {
         class="chat-input"
         @submit.prevent="sendDoctorMessage()"
       >
+        <transition name="emoji-panel">
+          <section
+            v-if="showEmojiPanel"
+            class="emoji-panel"
+            aria-label="表情选择面板"
+          >
+            <header class="emoji-panel-header">
+              <strong>表情</strong>
+
+              <button
+                type="button"
+                aria-label="收起表情面板"
+                @click="closeEmojiPanel"
+              >
+                收起
+              </button>
+            </header>
+
+            <div class="emoji-group-tabs">
+              <button
+                v-for="group in emojiGroups"
+                :key="group.name"
+                type="button"
+                :class="{ active: activeEmojiGroup === group.name }"
+                @click="activeEmojiGroup = group.name"
+              >
+                {{ group.name }}
+              </button>
+            </div>
+
+            <div class="emoji-grid">
+              <button
+                v-for="emoji in currentEmojiList"
+                :key="emoji"
+                type="button"
+                :aria-label="`添加表情 ${emoji}`"
+                @click="selectEmoji(emoji)"
+              >
+                {{ emoji }}
+              </button>
+            </div>
+          </section>
+        </transition>
+
         <input
           v-model="message"
           name="doctor_message"
@@ -736,6 +867,7 @@ onMounted(async () => {
           aria-label="输入医生咨询问题"
           enterkeyhint="send"
           placeholder="输入想咨询的问题"
+          @focus="closeEmojiPanel"
         />
 
         <div
@@ -773,7 +905,10 @@ onMounted(async () => {
 
           <button
             type="button"
+            class="emoji-tool"
+            :class="{ active: showEmojiPanel }"
             aria-label="添加表情"
+            :aria-expanded="showEmojiPanel"
             @click="handleTool('emoji')"
           >
             <SmileOutlined />
@@ -895,7 +1030,8 @@ onMounted(async () => {
 }
 
 .doctor-list-page::-webkit-scrollbar,
-.chat-body::-webkit-scrollbar {
+.chat-body::-webkit-scrollbar,
+.doctor-attachments::-webkit-scrollbar {
   display: none;
 }
 
@@ -1222,6 +1358,14 @@ onMounted(async () => {
   font-weight: 800;
 }
 
+.conversation-loading {
+  margin: 18px 0;
+  color: #8f9eb0;
+  font-size: 11px;
+  font-weight: 800;
+  text-align: center;
+}
+
 .message-row {
   display: grid;
   grid-template-columns: 38px minmax(0, auto);
@@ -1277,6 +1421,12 @@ onMounted(async () => {
   font-weight: 760;
   line-height: 1.58;
   white-space: pre-wrap;
+}
+
+.message-row.user p {
+  border-radius: 18px 8px 18px 18px;
+  color: #ffffff;
+  background: #1296ff;
 }
 
 .doctor-rich {
@@ -1382,7 +1532,11 @@ onMounted(async () => {
 .doctor-rich :deep(.chat-thinking) {
   border: 1px solid rgba(58, 112, 183, 0.18);
   border-radius: 18px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba(235, 242, 252, 0.82));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.8),
+    rgba(235, 242, 252, 0.82)
+  );
 }
 
 .doctor-rich :deep(.chat-thinking-title) {
@@ -1430,23 +1584,19 @@ onMounted(async () => {
   line-height: 1.6;
 }
 
-.message-row.user p {
-  border-radius: 18px 8px 18px 18px;
-  color: #ffffff;
-  background: #1296ff;
-}
-
 .chat-input {
+  position: relative;
   flex: 0 0 auto;
   padding: 10px 16px calc(12px + env(safe-area-inset-bottom));
   background: rgba(255, 255, 255, 0.96);
 }
 
-.chat-input input {
+.chat-input > input:not(.doctor-file-input) {
   width: 100%;
   height: 42px;
   border: 0;
   border-radius: 13px;
+  outline: 0;
   padding: 0 13px;
   color: #101936;
   background: #ffffff;
@@ -1455,7 +1605,7 @@ onMounted(async () => {
   font-weight: 800;
 }
 
-.chat-input input::placeholder {
+.chat-input > input:not(.doctor-file-input)::placeholder {
   color: #a1a8b3;
 }
 
@@ -1467,20 +1617,18 @@ onMounted(async () => {
   scrollbar-width: none;
 }
 
-.doctor-attachments::-webkit-scrollbar {
-  display: none;
-}
-
 .doctor-attachments button {
   display: inline-flex;
   max-width: 180px;
   flex: 0 0 auto;
   align-items: center;
   gap: 5px;
+  border: 0;
   border-radius: 999px;
   padding: 6px 9px;
   color: #1677ff;
   background: #eef6ff;
+  cursor: pointer;
   font-size: 11px;
   font-weight: 800;
 }
@@ -1501,27 +1649,132 @@ onMounted(async () => {
   height: 34px;
   place-items: center;
   border: 0;
+  border-radius: 10px;
   color: #252a33;
   background: transparent;
   cursor: pointer;
   font-size: 20px;
+  transition:
+    color 0.16s ease,
+    background 0.16s ease,
+    transform 0.16s ease;
+}
+
+.tool-row button:active {
+  transform: scale(0.92);
+}
+
+.tool-row .emoji-tool.active {
+  color: #1677ff;
+  background: #eaf3ff;
 }
 
 .tool-row .send-tool {
   border-radius: 12px;
   color: #ffffff;
   background: #1296ff;
+  box-shadow: 0 6px 12px rgba(18, 150, 255, 0.2);
 }
 
 .tool-row .send-tool:disabled {
+  cursor: not-allowed;
   opacity: 0.58;
+}
+
+.emoji-panel {
+  margin-bottom: 10px;
+  overflow: hidden;
+  border: 1px solid #e7edf4;
+  border-radius: 17px;
+  padding: 10px 11px 11px;
+  background: #f8fafc;
+  box-shadow: 0 -8px 20px rgba(39, 62, 96, 0.06);
+}
+
+.emoji-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.emoji-panel-header strong {
+  color: #52657d;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.emoji-panel-header button {
+  border: 0;
+  padding: 3px 2px;
+  color: #1677ff;
+  background: transparent;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.emoji-group-tabs {
+  display: flex;
+  gap: 7px;
+  margin-top: 9px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e8edf3;
+}
+
+.emoji-group-tabs button {
+  border: 0;
+  border-radius: 999px;
+  padding: 5px 10px;
+  color: #74869c;
+  background: transparent;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.emoji-group-tabs button.active {
+  color: #1677ff;
+  background: #eaf3ff;
+}
+
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 9px;
+}
+
+.emoji-grid button {
+  display: grid;
+  height: 34px;
+  place-items: center;
+  border: 0;
+  border-radius: 10px;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
+  font-size: 20px;
+  line-height: 1;
+  transition:
+    transform 0.16s ease,
+    background 0.16s ease;
+}
+
+.emoji-grid button:hover {
+  background: #edf5ff;
+}
+
+.emoji-grid button:active {
+  background: #e4f1ff;
+  transform: scale(0.86);
 }
 
 .app-toast {
   position: absolute;
-  z-index: 60;
+  z-index: 80;
   right: 50%;
-  bottom: calc(84px + env(safe-area-inset-bottom));
+  bottom: calc(76px + env(safe-area-inset-bottom));
   max-width: calc(100% - 48px);
   border-radius: 999px;
   padding: 10px 15px;
@@ -1535,7 +1788,9 @@ onMounted(async () => {
 }
 
 .toast-enter-active,
-.toast-leave-active {
+.toast-leave-active,
+.emoji-panel-enter-active,
+.emoji-panel-leave-active {
   transition:
     opacity 0.2s ease,
     transform 0.2s ease;
@@ -1547,42 +1802,49 @@ onMounted(async () => {
   transform: translate(50%, 10px);
 }
 
+.emoji-panel-enter-from,
+.emoji-panel-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
 @media (max-width: 360px) {
   .doctor-list-page {
     padding-right: 14px;
     padding-left: 14px;
   }
 
-  .doctor-tabs,
-  .doctor-feed {
+  .doctor-tabs {
     margin-right: -14px;
     margin-left: -14px;
   }
 
   .doctor-tabs :deep(.van-tabs__nav) {
-    padding-right: 14px;
-    padding-left: 14px;
+    padding: 0 14px;
+  }
+
+  .doctor-feed {
+    margin-right: -14px;
+    margin-left: -14px;
   }
 
   .doctor-item {
-    grid-template-columns: 47px minmax(0, 1fr) 14px;
-    gap: 10px;
     padding-right: 14px;
     padding-left: 14px;
   }
 
-  .avatar-button,
-  .doctor-avatar {
-    width: 47px;
-    height: 47px;
+  .chat-input {
+    padding-right: 12px;
+    padding-left: 12px;
   }
 
-  .doctor-content h2 {
-    font-size: 15px;
+  .emoji-grid {
+    gap: 3px;
   }
 
-  .doctor-content footer b {
-    display: none;
+  .emoji-grid button {
+    height: 31px;
+    font-size: 18px;
   }
 }
 </style>
