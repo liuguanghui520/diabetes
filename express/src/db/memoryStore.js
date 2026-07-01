@@ -464,13 +464,22 @@ export function createMemoryStore() {
 
       counters.messages += 1
       state.messages.push(message)
+
+      const conversation = state.conversations.find((item) => item.id === Number(input.conversation_id))
+      if (conversation) {
+        conversation.updated_at = now()
+      }
+
       return clone(message)
     },
 
-    async listConversations(userId, appType = 'assistant') {
+    async listConversations(userId, appType = 'assistant', options = {}) {
+      const doctorId = options.doctorId ? Number(options.doctorId) : null
       return clone(state.conversations
         .filter((conversation) => (
-          conversation.user_id === Number(userId) && conversation.app_type === appType
+          conversation.user_id === Number(userId)
+          && conversation.app_type === appType
+          && (doctorId === null || Number(conversation.doctor_id) === doctorId)
         ))
         .sort((left, right) => new Date(right.updated_at) - new Date(left.updated_at)))
     },

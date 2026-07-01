@@ -15,6 +15,7 @@ import {
 import { apiGet, authorizedFetch } from '../../api/request'
 import { uploadSingleFile } from '../../api/uploads'
 import { renderChatHtml } from '../../utils/chatRichText'
+import { consumeSseStream } from '../../utils/sse'
 
 const router = useRouter()
 const route = useRoute()
@@ -33,6 +34,8 @@ const pendingFiles = ref([])
 const doctorList = ref([])
 const threads = reactive({})
 const readDoctorIds = ref(new Set())
+const conversationIds = reactive({})
+const loadingConversation = ref(false)
 
 const filterOrder = [
   '全部',
@@ -143,6 +146,40 @@ function getThread(id) {
   return threads[id]
 }
 
+function decorateAssistantMessage(content = '') {
+  return {
+    role: 'assistant',
+    content,
+    html: renderChatHtml(content).html,
+  }
+}
+
+function buildThreadTimeLabel(timestamp) {
+  if (!timestamp) {
+    return '刚刚'
+  }
+
+  const date = new Date(timestamp)
+
+  if (Number.isNaN(date.getTime())) {
+    return '刚刚'
+  }
+
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+function buildGreetingMessages(doctor) {
+  return [
+    {
+      role: 'time',
+      content: '刚刚',
+    },
+    decorateAssistantMessage(
+      doctor?.greeting || '你好，可以把近期血糖、复查指标和问题发来。',
+    ),
+  ]
+}
+
 async function scrollToBottom() {
   await nextTick()
 
@@ -163,7 +200,7 @@ async function openChat(doctor) {
     ])
   }
 
-  getThread(doctor.id)
+  await loadDoctorConversation(doctor)
   pageMode.value = 'chat'
 
   await scrollToBottom()
@@ -208,49 +245,73 @@ function inferDoctorCategory(item) {
 }
 
 async function readSse(response, target) {
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
+  await consumeSseStream(response, {
+    async onMessage(data, rawText) {
+      const delta = data.delta || data.content || data.answer || rawText || ''
 
-  let buffer = ''
+      if (!delta) {
+        return
+      }
 
-  while (true) {
-    const { done, value } = await reader.read()
+      target.content += delta
+      target.html = renderChatHtml(target.content).html
+      await scrollToBottom()
+    },
+    async onMessageEnd(data) {
+      if (data.conversation_id) {
+        conversationIds[activeDoctor.value] = data.conversation_id
+      }
+    },
+    async onError(data) {
+      throw new Error(data.message || '医生咨询助手暂时不可用。')
+    },
+  })
+}
 
-    if (done) {
-      break
+async function loadDoctorConversation(doctor) {
+  loadingConversation.value = true
+
+  try {
+    const history = await apiGet(`/api/doctors/${doctor.id}/conversations`)
+    const items = history.data?.items || history.data || []
+    const currentConversation = items[0] || null
+
+    if (!currentConversation) {
+      conversationIds[doctor.id] = null
+      threads[doctor.id] = buildGreetingMessages(doctor)
+      return
     }
 
-    buffer += decoder.decode(value, {
-      stream: true,
+    conversationIds[doctor.id] = currentConversation.id
+
+    const result = await apiGet(
+      `/api/doctors/${doctor.id}/conversations/${currentConversation.id}/messages`,
+    )
+    const serverMessages = (result.data || []).map((messageItem) => {
+      if (messageItem.role === 'assistant') {
+        return decorateAssistantMessage(messageItem.content || '')
+      }
+
+      return {
+        role: messageItem.role,
+        content: messageItem.content || '',
+      }
     })
 
-    const chunks = buffer.split('\n\n')
-    buffer = chunks.pop() || ''
-
-    for (const chunk of chunks) {
-      const line = chunk
-        .split('\n')
-        .find((item) => item.startsWith('data:'))
-
-      if (!line) {
-        continue
-      }
-
-      const rawText = line.replace(/^data:\s*/, '')
-
-      if (rawText === '[DONE]') {
-        continue
-      }
-
-      try {
-        const data = JSON.parse(rawText)
-        target.content += data.delta || data.content || data.answer || ''
-        target.html = renderChatHtml(target.content).html
-      } catch {
-        target.content += rawText
-        target.html = renderChatHtml(target.content).html
-      }
-    }
+    threads[doctor.id] = serverMessages.length
+      ? [
+          {
+            role: 'time',
+            content: buildThreadTimeLabel(currentConversation.updated_at),
+          },
+          ...serverMessages,
+        ]
+      : buildGreetingMessages(doctor)
+  } catch {
+    conversationIds[doctor.id] = null
+    threads[doctor.id] = buildGreetingMessages(doctor)
+  } finally {
+    loadingConversation.value = false
   }
 }
 
@@ -320,7 +381,7 @@ async function sendDoctorMessage(preset = '') {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          conversation_id: null,
+          conversation_id: conversationIds[activeDoctor.value] || null,
           message: finalContent,
           attachments: uploadedAttachments,
         }),
@@ -332,10 +393,15 @@ async function sendDoctorMessage(preset = '') {
     } else {
       const payload = await response.json()
 
+      if (!response.ok || (payload?.code !== undefined && payload.code !== 0)) {
+        throw new Error(payload?.message || '发送失败。')
+      }
+
       reply.content = payload.data?.reply
         || payload.data?.answer
         || '已收到咨询，我会按医学参考思路帮你梳理。'
       reply.html = renderChatHtml(reply.content).html
+      conversationIds[activeDoctor.value] = payload.data?.conversation_id || conversationIds[activeDoctor.value] || null
     }
   } catch (error) {
     reply.content = '医生咨询助手暂时不可用。急性不适或明显异常指标，请优先线下就医。'
@@ -455,7 +521,7 @@ onMounted(async () => {
   })
 
   if (doctor) {
-    openChat(doctor)
+    await openChat(doctor)
   }
 })
 </script>
@@ -1213,28 +1279,72 @@ onMounted(async () => {
   white-space: pre-wrap;
 }
 
+.doctor-rich {
+  max-width: 280px;
+  border-radius: 10px 20px 20px;
+  padding: 12px 13px;
+  color: #17304a;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(242, 247, 255, 0.96));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.75),
+    0 10px 22px rgba(38, 66, 111, 0.08);
+  font-size: 14px;
+  font-weight: 760;
+  line-height: 1.72;
+}
+
 .doctor-rich :deep(p),
 .doctor-rich :deep(ul),
 .doctor-rich :deep(pre),
+.doctor-rich :deep(ol),
 .doctor-rich :deep(h1),
 .doctor-rich :deep(h2),
 .doctor-rich :deep(h3) {
   margin: 0;
+  box-shadow: none;
 }
 
 .doctor-rich :deep(p + p),
 .doctor-rich :deep(p + ul),
+.doctor-rich :deep(p + ol),
 .doctor-rich :deep(ul + p),
+.doctor-rich :deep(ol + p),
+.doctor-rich :deep(ul + ol),
+.doctor-rich :deep(ol + ul),
 .doctor-rich :deep(details) {
   margin-top: 10px;
 }
 
-.doctor-rich :deep(ul) {
+.doctor-rich :deep(ul),
+.doctor-rich :deep(ol) {
   padding-left: 18px;
+  color: inherit;
+  background: transparent;
 }
 
 .doctor-rich :deep(li + li) {
   margin-top: 6px;
+}
+
+.doctor-rich :deep(pre) {
+  overflow-x: auto;
+  border-radius: 14px;
+  padding: 12px 13px;
+  background: rgba(17, 28, 44, 0.06);
+  white-space: pre-wrap;
+}
+
+.doctor-rich :deep(p) {
+  padding: 0;
+  color: inherit;
+  background: transparent;
+}
+
+.doctor-rich :deep(hr) {
+  margin: 14px 0;
+  border: 0;
+  border-top: 1px solid rgba(104, 130, 167, 0.2);
 }
 
 .doctor-rich :deep(code) {
@@ -1252,27 +1362,72 @@ onMounted(async () => {
   text-underline-offset: 2px;
 }
 
-.doctor-rich :deep(.chat-thinking) {
-  border: 1px solid rgba(22, 119, 255, 0.15);
-  border-radius: 16px;
-  padding: 10px 12px;
-  background: rgba(22, 119, 255, 0.04);
+.doctor-rich :deep(.chat-rich-content) {
+  display: grid;
+  gap: 12px;
 }
 
-.doctor-rich :deep(.chat-thinking summary) {
+.doctor-rich :deep(.chat-answer) {
+  display: grid;
+  gap: 10px;
+}
+
+.doctor-rich :deep(.chat-answer > *) {
+  background: transparent;
+  font-size: 14px;
+  font-weight: 760;
+  line-height: 1.72;
+}
+
+.doctor-rich :deep(.chat-thinking) {
+  border: 1px solid rgba(58, 112, 183, 0.18);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba(235, 242, 252, 0.82));
+}
+
+.doctor-rich :deep(.chat-thinking-title) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  list-style: none;
   cursor: pointer;
-  color: #4f6480;
+  padding: 12px 13px;
+  color: #55708f;
   font-size: 12px;
   font-weight: 900;
+  letter-spacing: 0.03em;
+}
+
+.doctor-rich :deep(.chat-thinking-title::-webkit-details-marker) {
+  display: none;
+}
+
+.doctor-rich :deep(.chat-thinking-title::after) {
+  content: '展开';
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.doctor-rich :deep(.chat-thinking[open] .chat-thinking-title::after) {
+  content: '收起';
+}
+
+.doctor-rich :deep(.chat-thinking-body) {
+  display: grid;
+  gap: 9px;
+  padding: 0 13px 12px;
 }
 
 .doctor-rich :deep(.chat-thinking pre) {
-  margin-top: 10px;
-  white-space: pre-wrap;
+  margin: 0;
+  border-radius: 14px;
+  padding: 10px 11px;
   color: #51667f;
+  background: rgba(77, 114, 162, 0.08);
   font-size: 12px;
   font-weight: 700;
-  line-height: 1.55;
+  line-height: 1.6;
 }
 
 .message-row.user p {

@@ -73,6 +73,53 @@ function dispatchAuthExpiredEvent() {
     )
 }
 
+function normalizeUserFacingMessage(status, businessCode, payload) {
+    const rawMessage = String(payload?.message || '').trim()
+
+    if (status === 404 || businessCode === 40401) {
+        return '你要找的内容暂时没找到，请检查输入信息后再试。'
+    }
+
+    if (status === 400 || [40001, 40002, 40003].includes(businessCode)) {
+        return '提交的信息不完整或格式不对，请检查后重试。'
+    }
+
+    if (status === 401 || businessCode === 40101) {
+        // 如果服务端已经给出了具体的错误原因（如"账号或密码错误"），优先保留原文
+        if (rawMessage && !/未登录|Token.?失效|token.?失效/i.test(rawMessage)) {
+            return rawMessage
+        }
+
+        return '登录状态已失效，请重新登录后再试。'
+    }
+
+    if (status === 403 || [40301, 40302].includes(businessCode)) {
+        return '当前操作暂时不可用，请检查权限或稍后再试。'
+    }
+
+    if (status === 409 || businessCode === 40901) {
+        return '当前内容已发生变化，请刷新后再试。'
+    }
+
+    if (status === 429 || [42901, 42902].includes(businessCode)) {
+        return '操作太频繁了，请稍等一下再试。'
+    }
+
+    if (status >= 500 || [50001, 50002, 50201].includes(businessCode)) {
+        return '服务暂时有点忙，请稍后再试。'
+    }
+
+    if (!rawMessage) {
+        return `请求失败，HTTP 状态码：${status}`
+    }
+
+    if (/(404|参数错误|not found|invalid|bad request)/i.test(rawMessage)) {
+        return '提交的信息不完整或格式不对，请检查后重试。'
+    }
+
+    return rawMessage
+}
+
 function handleApiResult(status, payload) {
     const businessCode =
         payload &&
@@ -84,9 +131,7 @@ function handleApiResult(status, payload) {
     const isBusinessError = businessCode !== null && businessCode !== 0
 
     if (status < 200 || status >= 300 || isBusinessError) {
-        const message =
-            payload?.message ||
-            `请求失败，HTTP 状态码：${status}`
+        const message = normalizeUserFacingMessage(status, businessCode, payload)
 
         const error = new ApiRequestError(message, {
             status,

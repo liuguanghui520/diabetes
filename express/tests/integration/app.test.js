@@ -269,6 +269,54 @@ describe('Express API', () => {
     })
   })
 
+  it('reuses doctor conversation and exposes history endpoints', async () => {
+    const { app, difyClient } = await createTestContext()
+    const token = await registerAndLogin(request, app)
+
+    const first = await request(app)
+      .post('/api/doctors/1/chat')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        conversation_id: null,
+        message: '第一次咨询'
+      })
+
+    expect(first.status).toBe(200)
+
+    const conversations = await request(app)
+      .get('/api/doctors/1/conversations')
+      .set('Authorization', `Bearer ${token}`)
+
+    expect(conversations.status).toBe(200)
+    expect(conversations.body.data.items).toHaveLength(1)
+
+    const conversationId = conversations.body.data.items[0].id
+
+    const second = await request(app)
+      .post('/api/doctors/1/chat')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        conversation_id: conversationId,
+        message: '第二次咨询'
+      })
+
+    expect(second.status).toBe(200)
+    expect(difyClient.calls.chats.at(-1)).toMatchObject({
+      appType: 'doctor',
+      conversationId: 'dify_mock_conversation',
+      query: '第二次咨询'
+    })
+
+    const messages = await request(app)
+      .get(`/api/doctors/1/conversations/${conversationId}/messages`)
+      .set('Authorization', `Bearer ${token}`)
+
+    expect(messages.status).toBe(200)
+    expect(messages.body.data.map((item) => item.content)).toEqual(
+      expect.arrayContaining(['第一次咨询', '第二次咨询'])
+    )
+  })
+
   it('protects internal Dify APIs with X-Internal-Token', async () => {
     const { app } = await createTestContext()
 
@@ -282,6 +330,36 @@ describe('Express API', () => {
 
     expect(allowed.status).toBe(200)
     expect(allowed.body.code).toBe(0)
+  })
+
+  it('executes admin query DSL through internal endpoint', async () => {
+    const { app } = await createTestContext()
+    await registerAndLogin(request, app)
+
+    const response = await request(app)
+      .post('/internal/dify/admin/query')
+      .set('X-Internal-Token', 'test-internal-token')
+      .send({
+        table: 'sys_user',
+        select: ['id', 'username', 'nickname', 'role', 'status', 'created_at'],
+        where: { role: 'user' },
+        search: {
+          fields: ['username', 'nickname'],
+          value: 'kang',
+        },
+        order_by: 'created_at desc',
+        limit: 20,
+        offset: 0,
+      })
+
+    expect(response.status).toBe(200)
+    expect(response.body.code).toBe(0)
+    expect(response.body.data.table).toBe('sys_user')
+    expect(response.body.data.rows[0]).toMatchObject({
+      username: 'kang',
+      role: 'user',
+      status: 'active',
+    })
   })
 
   it('protects admin APIs and supports article publishing', async () => {

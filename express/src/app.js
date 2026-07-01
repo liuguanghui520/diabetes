@@ -32,7 +32,17 @@ export async function createApp(config, overrides = {}) {
   }
 
   app.disable('x-powered-by')
-  app.use(compression({ level: 6, threshold: 1024 }))
+  app.use(compression({
+    level: 6,
+    threshold: 1024,
+    filter(req, res) {
+      if (req.headers.accept?.includes('text/event-stream')) {
+        return false
+      }
+
+      return compression.filter(req, res)
+    }
+  }))
   app.use(createHelmetMiddleware(config))
   app.use(createCorsMiddleware(config))
   app.use(traceMiddleware)

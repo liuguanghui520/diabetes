@@ -1,9 +1,10 @@
 import { asyncHandler, sendOk } from '../../http/response.js'
-import { errors } from '../../http/errors.js'
+import { AppError, errors } from '../../http/errors.js'
 import {
   buildAuthorizedCheckinSummary,
   buildAuthorizedUserContext,
 } from '../privacy/authorization.js'
+import { executeQuery, validateDsl } from '../admin/queryDsl.js'
 
 function internalAuth(config) {
   return (req, _res, next) => {
@@ -81,5 +82,24 @@ export function registerInternalRoutes(app, deps) {
       readonly: true,
       note: 'Dify 管理员 Chatflow 只能读取摘要；写操作必须回到 Express 管理接口并经管理员确认。'
     })
+  }))
+
+  app.post('/internal/dify/admin/query', auth, asyncHandler(async (req, res) => {
+    const result = validateDsl(req.body)
+
+    if (!result.valid) {
+      if (result.code === 40302) {
+        throw errors.forbiddenDslTable('表不在允许查询范围内', result.errors)
+      }
+
+      if (result.code === 40002) {
+        throw errors.invalidDslColumn('请求列不在该表白名单内', result.errors)
+      }
+
+      throw new AppError(40003, '查询 DSL 不合法', 400, result.errors)
+    }
+
+    const data = await executeQuery(deps.pool || deps.store, result.normalizedDsl)
+    sendOk(res, data)
   }))
 }

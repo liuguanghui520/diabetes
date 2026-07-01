@@ -18,6 +18,7 @@ import { apiGet, authorizedFetch } from '../../api/request'
 import { uploadSingleFile } from '../../api/uploads'
 import LiquidTabBar from '../../components/navigation/LiquidTabBar.vue'
 import { renderChatHtml } from '../../utils/chatRichText'
+import { consumeSseStream } from '../../utils/sse'
 
 const welcomeMessage = {
   role: 'assistant',
@@ -175,52 +176,27 @@ function openHistory() {
 }
 
 async function readSse(response, target) {
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
+  await consumeSseStream(response, {
+    async onMessage(data, rawText) {
+      const delta = data.delta || data.content || data.answer || rawText || ''
 
-  while (true) {
-    const { done, value } = await reader.read()
-
-    if (done) {
-      break
-    }
-
-    buffer += decoder.decode(value, {
-      stream: true,
-    })
-
-    const chunks = buffer.split('\n\n')
-    buffer = chunks.pop() || ''
-
-    for (const chunk of chunks) {
-      const dataLine = chunk
-        .split('\n')
-        .find((line) => line.startsWith('data:'))
-
-      if (!dataLine) {
-        continue
+      if (!delta) {
+        return
       }
 
-      try {
-        const data = JSON.parse(
-          dataLine.replace(/^data:\s*/, ''),
-        )
-
-        if (data.delta || data.content || data.answer) {
-          target.content += data.delta || data.content || data.answer
-          target.html = renderChatHtml(target.content).html
-        }
-
-        if (data.conversation_id) {
-          conversationId.value = data.conversation_id
-        }
-      } catch {
-        target.content += dataLine.replace(/^data:\s*/, '')
-        target.html = renderChatHtml(target.content).html
+      target.content += delta
+      target.html = renderChatHtml(target.content).html
+      await nextTick()
+    },
+    async onMessageEnd(data) {
+      if (data.conversation_id) {
+        conversationId.value = data.conversation_id
       }
-    }
-  }
+    },
+    async onError(data) {
+      throw new Error(data.message || 'AI 服务暂时不可用。')
+    },
+  })
 }
 
 async function sendMessage(preset = '') {
@@ -834,6 +810,17 @@ onMounted(refreshHistory)
   max-width: 100%;
 }
 
+.message-rich {
+  border-radius: 22px;
+  padding: 14px 15px;
+  color: #1c2737;
+  background:
+    linear-gradient(180deg, rgba(247, 250, 255, 0.98), rgba(239, 245, 255, 0.94));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 12px 26px rgba(69, 104, 155, 0.08);
+}
+
 .q-message p {
   margin: 0;
   border-radius: 19px;
@@ -849,6 +836,7 @@ onMounted(refreshHistory)
 .message-rich :deep(p),
 .message-rich :deep(ul),
 .message-rich :deep(pre),
+.message-rich :deep(ol),
 .message-rich :deep(h1),
 .message-rich :deep(h2),
 .message-rich :deep(h3) {
@@ -857,17 +845,36 @@ onMounted(refreshHistory)
 
 .message-rich :deep(p + p),
 .message-rich :deep(p + ul),
+.message-rich :deep(p + ol),
 .message-rich :deep(ul + p),
+.message-rich :deep(ol + p),
+.message-rich :deep(ul + ol),
+.message-rich :deep(ol + ul),
 .message-rich :deep(details) {
   margin-top: 10px;
 }
 
-.message-rich :deep(ul) {
+.message-rich :deep(ul),
+.message-rich :deep(ol) {
   padding-left: 18px;
 }
 
 .message-rich :deep(li + li) {
   margin-top: 6px;
+}
+
+.message-rich :deep(pre) {
+  overflow-x: auto;
+  border-radius: 14px;
+  padding: 12px 13px;
+  background: rgba(17, 28, 44, 0.06);
+  white-space: pre-wrap;
+}
+
+.message-rich :deep(hr) {
+  margin: 14px 0;
+  border: 0;
+  border-top: 1px solid rgba(104, 130, 167, 0.2);
 }
 
 .message-rich :deep(code) {
@@ -885,27 +892,72 @@ onMounted(refreshHistory)
   text-underline-offset: 2px;
 }
 
-.message-rich :deep(.chat-thinking) {
-  border: 1px solid rgba(22, 119, 255, 0.15);
-  border-radius: 16px;
-  padding: 10px 12px;
-  background: rgba(22, 119, 255, 0.04);
+.message-rich :deep(.chat-rich-content) {
+  display: grid;
+  gap: 12px;
 }
 
-.message-rich :deep(.chat-thinking summary) {
+.message-rich :deep(.chat-answer) {
+  display: grid;
+  gap: 10px;
+}
+
+.message-rich :deep(.chat-answer > *) {
+  background: transparent;
+  font-size: 14px;
+  font-weight: 760;
+  line-height: 1.72;
+}
+
+.message-rich :deep(.chat-thinking) {
+  border: 1px solid rgba(58, 112, 183, 0.18);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba(235, 242, 252, 0.82));
+}
+
+.message-rich :deep(.chat-thinking-title) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  list-style: none;
   cursor: pointer;
-  color: #4f6480;
+  padding: 12px 13px;
+  color: #55708f;
   font-size: 12px;
   font-weight: 900;
+  letter-spacing: 0.03em;
+}
+
+.message-rich :deep(.chat-thinking-title::-webkit-details-marker) {
+  display: none;
+}
+
+.message-rich :deep(.chat-thinking-title::after) {
+  content: '展开';
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.message-rich :deep(.chat-thinking[open] .chat-thinking-title::after) {
+  content: '收起';
+}
+
+.message-rich :deep(.chat-thinking-body) {
+  display: grid;
+  gap: 9px;
+  padding: 0 13px 12px;
 }
 
 .message-rich :deep(.chat-thinking pre) {
-  margin-top: 10px;
-  white-space: pre-wrap;
+  margin: 0;
+  border-radius: 14px;
+  padding: 10px 11px;
   color: #51667f;
+  background: rgba(77, 114, 162, 0.08);
   font-size: 12px;
   font-weight: 700;
-  line-height: 1.55;
+  line-height: 1.6;
 }
 
 .q-message.user {

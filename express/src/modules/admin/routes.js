@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { asyncHandler, sendOk, validate } from '../../http/response.js'
 import { errors } from '../../http/errors.js'
 import { adminMiddleware } from '../auth/auth.js'
-import { proxyDifySse, writeSse } from '../assistant/sse.js'
+import { streamDifyChat } from '../assistant/routes.js'
 
 const pageQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -90,6 +90,16 @@ async function logAdmin(req, deps, action, targetType, targetId, beforeJson, aft
 
 function unwrapChange(change) {
   return change?.after !== undefined ? change.after : change
+}
+
+function assertAdminConversation(conversation) {
+  if (!conversation) {
+    throw errors.notFound('管理助手会话不存在')
+  }
+
+  if (conversation.app_type !== 'admin') {
+    throw errors.notFound('管理助手会话不存在')
+  }
 }
 
 export function registerAdminRoutes(router, deps) {
@@ -254,88 +264,44 @@ export function registerAdminRoutes(router, deps) {
   }))
 
   router.post('/admin/assistant/chat', auth, validate(adminChatSchema), asyncHandler(async (req, res) => {
-    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
-    res.setHeader('Cache-Control', 'no-cache, no-transform')
-    res.setHeader('Connection', 'keep-alive')
-    res.flushHeaders?.()
-
     let conversation = req.body.conversation_id
       ? await deps.store.findConversation(req.user.id, req.body.conversation_id)
       : null
 
+    if (conversation) {
+      assertAdminConversation(conversation)
+    }
+
     if (!conversation) {
       conversation = await deps.store.createConversation({
         user_id: req.user.id,
-        app_type: 'assistant',
+        app_type: 'admin',
         title: `管理助手：${req.body.message.slice(0, 24)}`,
         dify_conversation_id: null
       })
     }
 
-    await deps.store.createMessage({
-      conversation_id: conversation.id,
-      role: 'user',
-      content: req.body.message,
-      metadata: {
-        app_type: 'admin',
-        context: req.body.context
-      }
+    await streamDifyChat({
+      req,
+      res,
+      store: deps.store,
+      difyClient: deps.difyClient,
+      conversation,
+      appType: 'admin',
+      inputs: {
+        role: req.user.role,
+        context: req.body.context,
+      },
     })
+  }))
 
-    let fullText = ''
-    let difyConversationId = conversation.dify_conversation_id || ''
-    let difyMessageId = null
+  router.get('/admin/assistant/conversations', auth, asyncHandler(async (req, res) => {
+    sendOk(res, await deps.store.listConversations(req.user.id, 'admin'))
+  }))
 
-    try {
-      const difyResponse = await deps.difyClient.chatStream({
-        appType: 'admin',
-        query: req.body.message,
-        inputs: {
-          user_id: String(req.user.id),
-          role: req.user.role,
-          app_type: 'admin',
-          context: req.body.context
-        },
-        conversationId: difyConversationId,
-        user: req.user.id
-      })
-
-      await proxyDifySse({
-        response: difyResponse,
-        res,
-        onDelta(delta) {
-          fullText += delta
-        },
-        async onEnd(event) {
-          difyConversationId = event.conversation_id || difyConversationId
-          difyMessageId = event.message_id || event.id || null
-          await deps.store.updateConversation(conversation.id, {
-            dify_conversation_id: difyConversationId,
-            title: conversation.title
-          })
-          await deps.store.createMessage({
-            conversation_id: conversation.id,
-            role: 'assistant',
-            content: fullText || '管理员助手已处理。',
-            dify_message_id: difyMessageId,
-            metadata: {
-              app_type: 'admin',
-              dify_conversation_id: difyConversationId
-            }
-          })
-          writeSse(res, 'message_end', {
-            conversation_id: conversation.id,
-            dify_conversation_id: difyConversationId,
-            dify_message_id: difyMessageId
-          })
-        }
-      })
-    } catch (error) {
-      writeSse(res, 'error', {
-        message: error.message || '管理员助手暂时不可用'
-      })
-    } finally {
-      res.end()
-    }
+  router.get('/admin/assistant/conversations/:conversationId/messages', auth, asyncHandler(async (req, res) => {
+    const conversation = await deps.store.findConversation(req.user.id, req.params.conversationId)
+    assertAdminConversation(conversation)
+    sendOk(res, await deps.store.listMessages(req.user.id, req.params.conversationId))
   }))
 }

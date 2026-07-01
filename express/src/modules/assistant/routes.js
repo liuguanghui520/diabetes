@@ -17,7 +17,7 @@ const doctorChatSchema = chatSchema.extend({
   attachments: z.array(z.unknown()).optional()
 })
 
-async function streamDifyChat({
+export async function streamDifyChat({
   req,
   res,
   store,
@@ -30,16 +30,10 @@ async function streamDifyChat({
   res.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
   res.setHeader('Cache-Control', 'no-cache, no-transform')
   res.setHeader('Connection', 'keep-alive')
+  res.setHeader('X-Accel-Buffering', 'no')
+  res.socket?.setNoDelay?.(true)
   res.flushHeaders?.()
-
-  await store.createMessage({
-    conversation_id: conversation.id,
-    role: 'user',
-    content: req.body.message,
-    metadata: {
-      attachments: req.body.attachments || []
-    }
-  })
+  res.flush?.()
 
   let fullAnswer = ''
   let difyConversationId = conversation.dify_conversation_id || ''
@@ -50,6 +44,15 @@ async function streamDifyChat({
   }, 15000)
 
   try {
+    await store.createMessage({
+      conversation_id: conversation.id,
+      role: 'user',
+      content: req.body.message,
+      metadata: {
+        attachments: req.body.attachments || []
+      }
+    })
+
     const difyResponse = await difyClient.chatStream({
       appType,
       query: req.body.message,
@@ -99,12 +102,31 @@ async function streamDifyChat({
       }
     })
   } catch (error) {
-    writeSse(res, 'error', {
-      message: error.message || 'AI 服务暂时不可用'
-    })
+    if (!res.destroyed && !res.writableEnded) {
+      writeSse(res, 'error', {
+        message: error.message || 'AI 服务暂时不可用'
+      })
+    }
   } finally {
     clearInterval(ping)
-    res.end()
+
+    if (!res.destroyed && !res.writableEnded) {
+      res.end()
+    }
+  }
+}
+
+function assertDoctorConversation(conversation, doctorId) {
+  if (!conversation) {
+    throw errors.notFound('会话不存在')
+  }
+
+  if (conversation.app_type !== 'doctor') {
+    throw errors.notFound('医生会话不存在')
+  }
+
+  if (Number(conversation.doctor_id || 0) !== Number(doctorId || 0)) {
+    throw errors.notFound('该会话不属于当前医生')
   }
 }
 
@@ -164,21 +186,32 @@ export function registerAssistantRoutes(router, deps, options = {}) {
     )
 
     const doctorId = Number(req.params.doctorId)
-    const conversation = await store.createConversation({
-      user_id: req.user.id,
-      app_type: 'doctor',
-      doctor_id: Number.isFinite(doctorId) ? doctorId : null,
-      dify_conversation_id: null,
-      title: req.body.message.slice(0, 40)
-    })
+    let conversation = null
+    let isNewConversation = false
 
-    await store.createConsultationOrder?.({
-      user_id: req.user.id,
-      doctor_id: Number.isFinite(doctorId) ? doctorId : null,
-      conversation_id: conversation.id,
-      title: req.body.message.slice(0, 80),
-      priority: 'normal'
-    })
+    if (req.body.conversation_id) {
+      conversation = await store.findConversation(req.user.id, req.body.conversation_id)
+      assertDoctorConversation(conversation, doctorId)
+    } else {
+      conversation = await store.createConversation({
+        user_id: req.user.id,
+        app_type: 'doctor',
+        doctor_id: Number.isFinite(doctorId) ? doctorId : null,
+        dify_conversation_id: null,
+        title: req.body.message.slice(0, 40)
+      })
+      isNewConversation = true
+    }
+
+    if (isNewConversation) {
+      await store.createConsultationOrder?.({
+        user_id: req.user.id,
+        doctor_id: Number.isFinite(doctorId) ? doctorId : null,
+        conversation_id: conversation.id,
+        title: req.body.message.slice(0, 80),
+        priority: 'normal'
+      })
+    }
 
     await streamDifyChat({
       req,
@@ -192,6 +225,24 @@ export function registerAssistantRoutes(router, deps, options = {}) {
         attachments: req.body.attachments || [],
       },
     })
+  }))
+
+  router.get('/doctors/:doctorId/conversations', auth, asyncHandler(async (req, res) => {
+    const doctorId = Number(req.params.doctorId)
+
+    sendOk(res, {
+      items: await store.listConversations(req.user.id, 'doctor', {
+        doctorId: Number.isFinite(doctorId) ? doctorId : null,
+      }),
+    })
+  }))
+
+  router.get('/doctors/:doctorId/conversations/:conversationId/messages', auth, asyncHandler(async (req, res) => {
+    const doctorId = Number(req.params.doctorId)
+    const conversation = await store.findConversation(req.user.id, req.params.conversationId)
+
+    assertDoctorConversation(conversation, doctorId)
+    sendOk(res, await store.listMessages(req.user.id, req.params.conversationId))
   }))
 
   router.get('/assistant/conversations', auth, asyncHandler(async (req, res) => {

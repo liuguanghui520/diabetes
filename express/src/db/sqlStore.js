@@ -588,15 +588,25 @@ export function createSqlStore(pool) {
           JSON.stringify(input.metadata || {})
         ]
       )
+
+      await pool.query(
+        `update ai_conversation
+         set updated_at = current_timestamp
+         where id = $1`,
+        [input.conversation_id]
+      )
+
       return one(result)
     },
 
-    async listConversations(userId, appType = 'assistant') {
+    async listConversations(userId, appType = 'assistant', options = {}) {
+      const doctorId = options.doctorId ? Number(options.doctorId) : null
       const result = await pool.query(
         `select * from ai_conversation
          where user_id = $1 and app_type = $2
+           and ($3::bigint is null or doctor_id = $3::bigint)
          order by updated_at desc`,
-        [userId, appType]
+        [userId, appType, doctorId]
       )
       return result.rows
     },

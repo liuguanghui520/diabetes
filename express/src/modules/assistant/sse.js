@@ -1,8 +1,14 @@
 import { safeJson } from '../../utils/json.js'
 
 export function writeSse(res, event, data) {
+  if (res.destroyed || res.writableEnded) {
+    return false
+  }
+
   res.write(`event: ${event}\n`)
   res.write(`data: ${JSON.stringify(data)}\n\n`)
+  res.flush?.()
+  return true
 }
 
 export async function proxyDifySse({ response, res, onDelta, onEnd, onError }) {
@@ -16,6 +22,13 @@ export async function proxyDifySse({ response, res, onDelta, onEnd, onError }) {
   let buffer = ''
   let eventName = 'message'
   let dataLines = []
+  let responseError = null
+
+  function handleResponseError(error) {
+    responseError = error || new Error('SSE response stream error')
+  }
+
+  res.on('error', handleResponseError)
 
   async function emitEvent() {
     if (dataLines.length === 0) {
@@ -39,15 +52,21 @@ export async function proxyDifySse({ response, res, onDelta, onEnd, onError }) {
 
       if (delta) {
         await onDelta?.(delta, parsed)
-        writeSse(res, 'message', { delta })
+
+        if (!writeSse(res, 'message', { delta })) {
+          throw responseError || new Error('SSE response is no longer writable')
+        }
       }
     } else if (eventType === 'message_end') {
       await onEnd?.(parsed)
     } else if (eventType === 'error') {
       await onError?.(parsed)
-      writeSse(res, 'error', {
+
+      if (!writeSse(res, 'error', {
         message: parsed.message || 'AI 服务暂时不可用'
-      })
+      })) {
+        throw responseError || new Error('SSE response is no longer writable')
+      }
     }
 
     eventName = 'message'
@@ -72,6 +91,10 @@ export async function proxyDifySse({ response, res, onDelta, onEnd, onError }) {
   }
 
   while (true) {
+    if (responseError || res.destroyed || res.writableEnded) {
+      throw responseError || new Error('SSE response is no longer writable')
+    }
+
     const { done, value } = await reader.read()
     buffer += decoder.decode(value || new Uint8Array(), { stream: !done })
     const lines = buffer.split(/\r?\n/)
@@ -91,4 +114,6 @@ export async function proxyDifySse({ response, res, onDelta, onEnd, onError }) {
       break
     }
   }
+
+  res.off('error', handleResponseError)
 }

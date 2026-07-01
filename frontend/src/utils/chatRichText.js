@@ -27,43 +27,121 @@ function escapeHtml(value = '') {
     .replace(/'/g, '&#39;')
 }
 
-export function extractThinkingBlocks(raw = '') {
-  const source = String(raw || '')
-  const blocks = []
-  const patterns = [
-    /<think>([\s\S]*?)<\/think>/gi,
-    /<thinking>([\s\S]*?)<\/thinking>/gi,
+function findOpenTag(source, lowerSource, startIndex) {
+  const tags = [
+    { open: '<think>', close: '</think>' },
+    { open: '<thinking>', close: '</thinking>' },
   ]
 
-  let clean = source
+  let matched = null
 
-  for (const pattern of patterns) {
-    clean = clean.replace(pattern, (_, content) => {
-      const text = String(content || '').trim()
-      if (text) {
-        blocks.push(text)
+  for (const tag of tags) {
+    const index = lowerSource.indexOf(tag.open, startIndex)
+
+    if (index === -1) {
+      continue
+    }
+
+    if (!matched || index < matched.index) {
+      matched = {
+        index,
+        open: source.slice(index, index + tag.open.length),
+        close: tag.close,
       }
-      return '\n'
-    })
+    }
   }
 
+  return matched
+}
+
+export function extractThinkingBlocks(raw = '') {
+  const source = String(raw || '')
+  const lowerSource = source.toLowerCase()
+  const thinking = []
+  const answerParts = []
+
+  let cursor = 0
+  let currentThinking = ''
+  let activeCloseTag = null
+
+  while (cursor < source.length) {
+    if (!activeCloseTag) {
+      const tag = findOpenTag(source, lowerSource, cursor)
+
+      if (!tag) {
+        answerParts.push(source.slice(cursor))
+        break
+      }
+
+      answerParts.push(source.slice(cursor, tag.index))
+      activeCloseTag = tag.close
+      currentThinking = ''
+      cursor = tag.index + tag.open.length
+      continue
+    }
+
+    const closeIndex = lowerSource.indexOf(activeCloseTag, cursor)
+
+    if (closeIndex === -1) {
+      currentThinking += source.slice(cursor)
+      cursor = source.length
+      break
+    }
+
+    currentThinking += source.slice(cursor, closeIndex)
+
+    const text = currentThinking.trim()
+    if (text) {
+      thinking.push(text)
+    }
+
+    cursor = closeIndex + activeCloseTag.length
+    currentThinking = ''
+    activeCloseTag = null
+  }
+
+  if (currentThinking.trim()) {
+    thinking.push(currentThinking.trim())
+  }
+
+  const cleanText = answerParts
+    .join('')
+    .replace(/<\/think>/gi, '')
+    .replace(/<\/thinking>/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+
   return {
-    cleanText: clean.replace(/\n{3,}/g, '\n\n').trim(),
-    thinking: blocks,
+    cleanText,
+    thinking,
+    hasOpenThinking: Boolean(activeCloseTag),
   }
 }
 
 export function renderChatHtml(raw = '') {
-  const { cleanText, thinking } = extractThinkingBlocks(raw)
+  const { cleanText, thinking, hasOpenThinking } = extractThinkingBlocks(raw)
   const safeThinking = thinking.map((item) => escapeHtml(item))
-  const contentHtml = markdown.render(cleanText || '生成中…')
+  const answerHtml = markdown.render(cleanText || '生成中…')
   const thinkingHtml = safeThinking.length
-    ? `<details class="chat-thinking"><summary>思考过程</summary>${safeThinking.map((item) => `<pre>${item}</pre>`).join('')}</details>`
+    ? `
+      <details class="chat-thinking"${hasOpenThinking ? ' open' : ''}>
+        <summary class="chat-thinking-title">${hasOpenThinking ? '正在思考' : '思考过程'}</summary>
+        <div class="chat-thinking-body">
+          ${safeThinking.map((item) => `<pre>${item}</pre>`).join('')}
+        </div>
+      </details>
+    `
     : ''
 
   return {
-    html: DOMPurify.sanitize(`${contentHtml}${thinkingHtml}`),
+    html: DOMPurify.sanitize(`
+      <div class="chat-rich-content">
+        ${thinkingHtml}
+        <div class="chat-answer">${answerHtml}</div>
+      </div>
+    `),
     plainText: cleanText || '',
     thinking,
+    hasOpenThinking,
   }
 }

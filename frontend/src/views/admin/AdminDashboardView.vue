@@ -11,6 +11,7 @@ import {
   TeamOutlined,
 } from '@ant-design/icons-vue'
 import { apiGet, apiPost, apiPut, authorizedFetch, getStoredUser, hasAuthSession } from '../../api/request'
+import { consumeSseStream } from '../../utils/sse'
 
 const router = useRouter()
 const activeSection = ref('overview')
@@ -25,6 +26,7 @@ const logs = ref([])
 const adminMessage = ref('')
 const adminSending = ref(false)
 const adminConversationId = ref(null)
+const adminHistoryLoaded = ref(false)
 const adminMessages = ref([
   { role: 'assistant', content: '可以用自然语言查询后台数据，或草拟医生资料、坐诊时间等维护操作。涉及写库时请先确认。' },
 ])
@@ -169,28 +171,50 @@ async function toggleUserStatus(user) {
 }
 
 async function readSse(response, target) {
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    const chunks = buffer.split('\n\n')
-    buffer = chunks.pop() || ''
-
-    for (const chunk of chunks) {
-      const line = chunk.split('\n').find((item) => item.startsWith('data:'))
-      if (!line) continue
-      try {
-        const data = JSON.parse(line.replace(/^data:\s*/, ''))
-        target.content += data.delta || data.content || ''
-        if (data.conversation_id) adminConversationId.value = data.conversation_id
-      } catch {
-        target.content += line.replace(/^data:\s*/, '')
+  await consumeSseStream(response, {
+    async onMessage(data, rawText) {
+      target.content += data.delta || data.content || data.answer || rawText || ''
+    },
+    async onMessageEnd(data) {
+      if (data.conversation_id) {
+        adminConversationId.value = data.conversation_id
       }
+    },
+    async onError(data) {
+      throw new Error(data.message || '管理员助手暂时不可用，请稍后重试。')
+    },
+  })
+}
+
+async function loadAdminAssistantHistory() {
+  try {
+    const result = await apiGet('/api/admin/assistant/conversations')
+    const items = result.data || []
+    const latest = items[0] || null
+
+    if (!latest) {
+      adminConversationId.value = null
+      adminHistoryLoaded.value = true
+      return
     }
+
+    adminConversationId.value = latest.id
+
+    const messagesResult = await apiGet(
+      `/api/admin/assistant/conversations/${latest.id}/messages`,
+    )
+    const historyMessages = (messagesResult.data || []).map((item) => ({
+      role: item.role,
+      content: item.content || '',
+    }))
+
+    if (historyMessages.length) {
+      adminMessages.value = historyMessages
+    }
+  } catch (error) {
+    showNotice(error.message || '管理助手历史读取失败。')
+  } finally {
+    adminHistoryLoaded.value = true
   }
 }
 
@@ -223,7 +247,21 @@ async function sendAdminMessage() {
   }
 }
 
-onMounted(loadAdminData)
+async function handleSectionChange(key) {
+  activeSection.value = key
+
+  if (key === 'assistant' && !adminHistoryLoaded.value) {
+    await loadAdminAssistantHistory()
+  }
+}
+
+onMounted(async () => {
+  await loadAdminData()
+
+  if (activeSection.value === 'assistant' && !adminHistoryLoaded.value) {
+    await loadAdminAssistantHistory()
+  }
+})
 </script>
 
 <template>
@@ -371,7 +409,7 @@ onMounted(loadAdminData)
           :key="item.key"
           type="button"
           :class="{ active: activeSection === item.key }"
-          @click="activeSection = item.key"
+          @click="handleSectionChange(item.key)"
         >
           <component :is="item.icon" />
           <span>{{ item.label }}</span>

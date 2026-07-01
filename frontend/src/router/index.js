@@ -18,6 +18,7 @@ import DoctorProfileView from '../views/doctor/DoctorProfileView.vue'
 import MessagesView from '../views/messages/MessagesView.vue'
 import FavoritesView from '../views/favorites/FavoritesView.vue'
 import AdminDashboardView from '../views/admin/AdminDashboardView.vue'
+import NotFoundView from '../views/NotFoundView.vue'
 import { getStoredUser, hasAuthSession } from '../api/request'
 
 const publicRouteNames = new Set(['journey', 'login'])
@@ -128,7 +129,8 @@ const routes = [
     },
     {
         path: '/:pathMatch(.*)*',
-        redirect: '/journey',
+        name: 'notFound',
+        component: NotFoundView,
     },
 ]
 
