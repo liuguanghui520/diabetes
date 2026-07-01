@@ -66,7 +66,7 @@ function addDays(dateText, days) {
 
 function normalizePlanOutput(outputs, preferences) {
   const parsed = safeJson(outputs, outputs) || {}
-  const plan = parsed.plan || parsed.data || parsed
+  const plan = parsed.result || parsed.plan || parsed.data || parsed
   const tasks = Array.isArray(plan.tasks) ? plan.tasks : []
 
   return {
@@ -81,7 +81,7 @@ function normalizePlanOutput(outputs, preferences) {
 
 function normalizeAnalysisOutput(outputs, summary) {
   const parsed = safeJson(outputs, outputs) || {}
-  const analysis = parsed.analysis || parsed.data || parsed
+  const analysis = parsed.result || parsed.analysis || parsed.data || parsed
   const completionRate = Number(
     analysis.completion_rate ?? summary.completion_rate ?? 0
   )
@@ -102,7 +102,7 @@ function normalizeAnalysisOutput(outputs, summary) {
 
 function normalizeReportOutput(outputs) {
   const parsed = safeJson(outputs, outputs) || {}
-  const report = parsed.report || parsed.interpretation || parsed.data || parsed
+  const report = parsed.result || parsed.report || parsed.interpretation || parsed.data || parsed
 
   return {
     status: report.status || 'pending_confirm',
@@ -377,5 +377,34 @@ export function registerWorkflowRoutes(router, deps, options = {}) {
       requestId: req.params.requestId,
       log
     }))
+  }))
+
+  router.get('/checkins/history', auth, asyncHandler(async (req, res) => {
+    const days = Math.min(Math.max(Number(req.query.days) || 30, 1), 90)
+    const records = await store.getCheckinRecords?.(req.user.id, { days }) || []
+    const plan = await store.getActivePlan?.(req.user.id)
+
+    // Build per-day data from checkin records
+    const history = []
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date()
+      d.setDate(d.getDate() - i)
+      const dateStr = d.toISOString().slice(0, 10)
+      const record = records.find((r) => {
+        const rd = r.checkin_date instanceof Date
+          ? r.checkin_date.toISOString().slice(0, 10)
+          : String(r.checkin_date || '').slice(0, 10)
+        return rd === dateStr
+      })
+
+      history.push({
+        date: dateStr,
+        completion_rate: record ? Number(record.completion_rate || 0) : 0,
+        done_count: record ? (record.items?.length || 0) : 0,
+        total_count: plan?.tasks?.length || 0
+      })
+    }
+
+    sendOk(res, { days, history, plan_task_count: plan?.tasks?.length || 0 })
   }))
 }

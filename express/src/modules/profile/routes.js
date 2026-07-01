@@ -54,6 +54,13 @@ function calculateAge(birthDate) {
   return age >= 0 && age <= 120 ? age : null
 }
 
+function calculateCompletionRate(profile) {
+  if (!profile) return 0
+  const fields = ['gender', 'age_snapshot', 'height_cm', 'weight_kg', 'waist_cm', 'sbp_mm_hg', 'family_history_diabetes']
+  const completed = fields.filter((f) => profile[f] !== null && profile[f] !== undefined && profile[f] !== '')
+  return Math.round((completed.length / fields.length) * 100)
+}
+
 export function registerProfileRoutes(router, deps) {
   const auth = authMiddleware(deps)
 
@@ -68,6 +75,7 @@ export function registerProfileRoutes(router, deps) {
       profile: {
         ...(profile || {}),
         nickname: profile?.nickname || user?.nickname || null,
+        completion_rate: calculateCompletionRate(profile),
       },
       user: user
         ? {

@@ -20,6 +20,7 @@ const router = useRouter()
 const mode = ref('plan')
 const plan = ref(null)
 const analysis = ref(null)
+const checkinHistory = ref([])
 const toastText = ref('')
 const generatingPlan = ref(false)
 const analyzing = ref(false)
@@ -284,6 +285,7 @@ async function loadAnalysis() {
   mode.value = 'analysis'
   analyzing.value = true
   analysis.value = null
+  loadCheckinHistory()
 
   try {
     const result = await apiPost(
@@ -320,6 +322,26 @@ async function loadAnalysis() {
   } finally {
     analyzing.value = false
   }
+}
+
+async function loadCheckinHistory() {
+  try {
+    const result = await apiGet('/api/checkins/history?days=30')
+    checkinHistory.value = result.data?.history || []
+  } catch {
+    checkinHistory.value = []
+  }
+}
+
+function barHeight(rate) {
+  return Math.max(4, Math.round((rate / 100) * 120))
+}
+
+function barColor(rate) {
+  if (rate >= 80) return '#00c48c'
+  if (rate >= 50) return '#1677ff'
+  if (rate > 0) return '#ffa940'
+  return '#e8e8e8'
 }
 
 function closeAnalysis() {
@@ -514,11 +536,11 @@ onMounted(loadPlan)
           <span>近 7 天任务完成率</span>
 
           <strong>
-            {{ analysis?.completion_rate ?? completionRate }}%
+            {{ analysis?.completion_rate != null ? analysis.completion_rate + '%' : '--' }}
           </strong>
 
           <van-progress
-            :percentage="analysis?.completion_rate ?? completionRate"
+            :percentage="analysis?.completion_rate ?? 0"
             :show-pivot="false"
             stroke-width="8"
             color="#1677ff"
@@ -531,6 +553,40 @@ onMounted(loadPlan)
                 || '继续保持饮食、运动和复查任务的规律完成，系统会逐步形成更准确的执行分析。'
             }}
           </p>
+        </section>
+
+        <section class="analysis-card">
+          <header>
+            <TrophyOutlined />
+            <h2>近 30 天完成率趋势</h2>
+          </header>
+
+          <div v-if="checkinHistory.length" class="chart-container">
+            <div class="chart-bars">
+              <div
+                v-for="(item, i) in checkinHistory"
+                :key="item.date"
+                class="chart-bar-wrap"
+                :title="`${item.date.slice(5)}: ${item.completion_rate}%`"
+              >
+                <div
+                  class="chart-bar"
+                  :style="{
+                    height: barHeight(item.completion_rate) + 'px',
+                    background: barColor(item.completion_rate),
+                  }"
+                />
+                <small v-if="i % 3 === 0">{{ item.date.slice(5) }}</small>
+              </div>
+            </div>
+            <div class="chart-legend">
+              <span><i style="background:#00c48c" /> ≥80%</span>
+              <span><i style="background:#1677ff" /> ≥50%</span>
+              <span><i style="background:#ffa940" /> &lt;50%</span>
+              <span><i style="background:#e8e8e8" /> 无记录</span>
+            </div>
+          </div>
+          <p v-else class="chart-empty">完成每日打卡后，这里会展示近 30 天的完成率趋势。</p>
         </section>
 
         <section class="analysis-card">
@@ -1079,5 +1135,69 @@ onMounted(loadPlan)
   .task-status {
     min-width: 42px;
   }
+}
+
+/* ---------- 打卡历史曲线图 ---------- */
+.chart-container {
+  margin-top: 4px;
+}
+
+.chart-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 140px;
+  padding: 0 2px 18px;
+}
+
+.chart-bar-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+  position: relative;
+  height: 100%;
+}
+
+.chart-bar {
+  width: 100%;
+  max-width: 14px;
+  border-radius: 3px 3px 0 0;
+  min-height: 2px;
+  transition: height 0.3s ease;
+}
+
+.chart-bar-wrap small {
+  position: absolute;
+  bottom: -18px;
+  font-size: 9px;
+  color: #999;
+  white-space: nowrap;
+}
+
+.chart-legend {
+  display: flex;
+  gap: 12px;
+  margin-top: 10px;
+  font-size: 11px;
+  color: #888;
+}
+
+.chart-legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 3px;
+  vertical-align: -1px;
+}
+
+.chart-empty {
+  text-align: center;
+  font-size: 13px;
+  color: #999;
+  padding: 24px 0 8px;
 }
 </style>

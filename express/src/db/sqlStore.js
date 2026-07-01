@@ -184,13 +184,16 @@ async function refreshCheckinCompletion(executor, recordId, planId) {
   )
   const doneResult = await executor.query(
     `select count(*)::int as total
-     from checkin_item
-     where checkin_record_id = $1 and status = 'done'`,
-    [recordId]
+     from checkin_item ci
+     join plan_task pt on pt.id = ci.plan_task_id
+     where ci.checkin_record_id = $1
+       and ci.status = 'done'
+       and pt.plan_id = $2`,
+    [recordId, planId]
   )
   const total = totalResult.rows[0]?.total || 0
   const done = doneResult.rows[0]?.total || 0
-  const completionRate = total > 0 ? Math.round((done / total) * 100) : 0
+  const completionRate = Math.min(100, total > 0 ? Math.round((done / total) * 100) : 0)
   const updated = await executor.query(
     `update checkin_record
      set completion_rate = $2,
@@ -959,7 +962,11 @@ export function createSqlStore(pool) {
            exists(
              select 1 from article_favorite af
              where af.article_id = a.id and af.user_id = $3
-           ) as favorited
+           ) as favorited,
+           exists(
+             select 1 from article_like al
+             where al.article_id = a.id and al.user_id = $3
+           ) as liked
          from article a
          left join article_category c on c.id = a.category_id
          where a.deleted_at is null and a.status = 'published'
@@ -979,6 +986,11 @@ export function createSqlStore(pool) {
     },
 
     async getArticleById(id, { userId = null, ipAddress = '' } = {}) {
+      await pool.query(
+        `update article set view_count = view_count + 1 where id = $1`,
+        [id]
+      )
+
       const result = await pool.query(
         `select
            a.*,
@@ -986,7 +998,11 @@ export function createSqlStore(pool) {
            exists(
              select 1 from article_favorite af
              where af.article_id = a.id and af.user_id = $2
-           ) as favorited
+           ) as favorited,
+           exists(
+             select 1 from article_like al
+             where al.article_id = a.id and al.user_id = $2
+           ) as liked
          from article a
          left join article_category c on c.id = a.category_id
          where a.id = $1 and a.deleted_at is null and a.status = 'published'
@@ -1003,10 +1019,6 @@ export function createSqlStore(pool) {
         `insert into article_read_log (user_id, article_id, ip_address, created_at)
          values ($1, $2, $3, current_timestamp)`,
         [userId, id, ipAddress || null]
-      )
-      await pool.query(
-        `update article set view_count = view_count + 1 where id = $1`,
-        [id]
       )
 
       return article
