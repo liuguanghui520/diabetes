@@ -14,6 +14,10 @@ const router = useRouter()
 const storedUser = ref(getStoredUser())
 const toastText = ref('')
 const saving = ref(false)
+const showBirthCalendar = ref(false)
+
+const minBirthDate = new Date(1900, 0, 1)
+const maxBirthDate = new Date()
 
 const form = reactive({
   nickname: storedUser.value?.nickname || storedUser.value?.username || '',
@@ -30,31 +34,102 @@ const ageText = computed(() => {
   return age ? `${age} 岁` : '填写后用于健康档案和个性化建议'
 })
 
+const birthDateText = computed(() => {
+  if (!form.birth_date) {
+    return '请选择出生日期'
+  }
+
+  return form.birth_date.replaceAll('-', '/')
+})
+
+const birthCalendarDefaultDate = computed(() => {
+  const parts = parseDateParts(form.birth_date)
+
+  if (parts) {
+    return new Date(
+      parts.year,
+      parts.month - 1,
+      parts.day,
+    )
+  }
+
+  return new Date(2000, 0, 1)
+})
+
 const genderOptions = [
   { label: '男', value: 'male' },
   { label: '女', value: 'female' },
   { label: '暂不说明', value: 'unknown' },
 ]
 
+function parseDateParts(value) {
+  if (!value) {
+    return null
+  }
+
+  const match = String(value).match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)
+
+  if (!match) {
+    return null
+  }
+
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+
+  if (!year || !month || !day) {
+    return null
+  }
+
+  return {
+    year,
+    month,
+    day,
+  }
+}
+
+function formatDateParts(year, month, day) {
+  return [
+    String(year),
+    String(month).padStart(2, '0'),
+    String(day).padStart(2, '0'),
+  ].join('-')
+}
+
+function getTodayParts() {
+  const now = new Date()
+
+  return {
+    year: now.getFullYear(),
+    month: now.getMonth() + 1,
+    day: now.getDate(),
+  }
+}
+
 function calculateAge(value) {
-  if (!value) return null
+  const birth = parseDateParts(value)
 
-  const birth = new Date(value)
-  if (Number.isNaN(birth.getTime())) return null
+  if (!birth) {
+    return null
+  }
 
-  const today = new Date()
-  let age = today.getFullYear() - birth.getFullYear()
-  const monthDiff = today.getMonth() - birth.getMonth()
+  const today = getTodayParts()
 
-  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+  let age = today.year - birth.year
+
+  if (
+    today.month < birth.month
+    || (today.month === birth.month && today.day < birth.day)
+  ) {
     age -= 1
   }
 
-  return age > 0 && age < 130 ? age : null
+  return age >= 0 && age < 130 ? age : null
 }
 
 function showToast(text) {
   toastText.value = text
+
   window.setTimeout(() => {
     toastText.value = ''
   }, 2200)
@@ -66,23 +141,55 @@ function goBack() {
     return
   }
 
-  router.push({ name: 'profile' })
+  router.push({
+    name: 'profile',
+  })
 }
 
 function formatDateInput(value) {
-  if (!value) return ''
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return ''
-  const yyyy = d.getFullYear()
-  const mm = String(d.getMonth() + 1).padStart(2, '0')
-  const dd = String(d.getDate()).padStart(2, '0')
-  return `${yyyy}-${mm}-${dd}`
+  const parts = parseDateParts(value)
+
+  if (!parts) {
+    return ''
+  }
+
+  return formatDateParts(
+    parts.year,
+    parts.month,
+    parts.day,
+  )
+}
+
+function openBirthCalendar() {
+  showBirthCalendar.value = true
+}
+
+function closeBirthCalendar() {
+  showBirthCalendar.value = false
+}
+
+function confirmBirthCalendar(value) {
+  if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
+    return
+  }
+
+  form.birth_date = formatDateParts(
+    value.getFullYear(),
+    value.getMonth() + 1,
+    value.getDate(),
+  )
+
+  showBirthCalendar.value = false
 }
 
 function applyProfile(data = {}) {
   const profile = data.profile || data
+
   Object.assign(form, {
-    nickname: profile.nickname || storedUser.value?.nickname || storedUser.value?.username || '',
+    nickname: profile.nickname
+      || storedUser.value?.nickname
+      || storedUser.value?.username
+      || '',
     birth_date: formatDateInput(profile.birth_date),
     gender: profile.gender || '',
     hometown: profile.hometown || '',
@@ -115,9 +222,13 @@ async function saveProfile() {
 
     const savedProfile = response.data?.profile || {}
     const savedUser = response.data?.user || {}
+
     storedUser.value = updateStoredUser({
-      nickname: savedProfile.nickname || savedUser.nickname || form.nickname.trim(),
+      nickname: savedProfile.nickname
+        || savedUser.nickname
+        || form.nickname.trim(),
     }) || storedUser.value
+
     applyProfile({
       profile: savedProfile,
     })
@@ -138,10 +249,16 @@ onMounted(loadProfile)
     <section class="personal-phone">
       <div class="personal-scroll">
         <header class="personal-nav">
-          <button type="button" aria-label="返回" @click="goBack">
+          <button
+            type="button"
+            aria-label="返回"
+            @click="goBack"
+          >
             <LeftOutlined />
           </button>
+
           <strong>个人信息</strong>
+
           <span></span>
         </header>
 
@@ -149,21 +266,30 @@ onMounted(loadProfile)
           <div class="avatar-box">
             <span>{{ (form.nickname || '测').slice(0, 1) }}</span>
           </div>
+
           <div>
             <p>基础资料</p>
             <h1>{{ form.nickname || '未设置昵称' }}</h1>
-            <small>出生日期和性别会参与糖尿病风险评分，健康指标放在健康档案里。</small>
+            <small>
+              出生日期和性别会参与糖尿病风险评分，健康指标放在健康档案里。
+            </small>
           </div>
         </section>
 
-        <van-form class="personal-form" @submit="saveProfile">
+        <van-form
+          class="personal-form"
+          @submit="saveProfile"
+        >
           <section class="form-band">
             <div class="band-title">
               <UserOutlined />
               <span>身份资料</span>
             </div>
 
-            <van-cell-group class="field-list" :border="false">
+            <van-cell-group
+              class="field-list"
+              :border="false"
+            >
               <van-field
                 v-model="form.nickname"
                 label="姓名"
@@ -188,17 +314,19 @@ onMounted(loadProfile)
                 </template>
               </van-field>
 
-              <van-field label="出生日期">
-                <template #input>
-                  <input
-                    v-model="form.birth_date"
-                    class="date-input"
-                    type="date"
-                    max="2026-06-27"
-                    aria-label="出生日期"
-                  />
+              <van-field
+                label="出生日期"
+                readonly
+                clickable
+                :model-value="birthDateText"
+                @click="openBirthCalendar"
+              >
+                <template #right-icon>
+                  <span class="birth-field-right">
+                    <van-icon name="calendar-o" />
+                    <span class="age-tip">{{ ageText }}</span>
+                  </span>
                 </template>
-                <template #right-icon><span class="age-tip">{{ ageText }}</span></template>
               </van-field>
             </van-cell-group>
           </section>
@@ -209,7 +337,10 @@ onMounted(loadProfile)
               <span>所在地</span>
             </div>
 
-            <van-cell-group class="field-list" :border="false">
+            <van-cell-group
+              class="field-list"
+              :border="false"
+            >
               <van-field
                 v-model="form.hometown"
                 label="家乡"
@@ -217,6 +348,7 @@ onMounted(loadProfile)
                 maxlength="24"
                 clearable
               />
+
               <van-field
                 v-model="form.city"
                 label="常住地"
@@ -224,6 +356,7 @@ onMounted(loadProfile)
                 maxlength="24"
                 clearable
               />
+
               <van-field
                 v-model="form.occupation"
                 label="身份"
@@ -234,12 +367,18 @@ onMounted(loadProfile)
             </van-cell-group>
           </section>
 
-          <button class="archive-link" type="button" @click="router.push({ name: 'healthArchive' })">
+          <button
+            class="archive-link"
+            type="button"
+            @click="router.push({ name: 'healthArchive' })"
+          >
             <IdcardOutlined />
+
             <span>
               <strong>继续完善糖尿病健康档案</strong>
               <small>身高体重、腰围血压、家族史和血糖数据都放在那里。</small>
             </span>
+
             <van-icon name="arrow" />
           </button>
 
@@ -254,15 +393,71 @@ onMounted(loadProfile)
               :loading="saving"
               loading-text="保存中"
             >
-              <template #icon><SaveOutlined /></template>
+              <template #icon>
+                <SaveOutlined />
+              </template>
+
               保存个人信息
             </van-button>
           </div>
         </van-form>
       </div>
 
+      <div
+        v-if="showBirthCalendar"
+        class="birth-calendar-layer"
+      >
+        <button
+          type="button"
+          class="birth-calendar-mask"
+          aria-label="关闭出生日期选择"
+          @click="closeBirthCalendar"
+        ></button>
+
+        <section class="birth-calendar-sheet">
+          <header class="calendar-sheet-header">
+            <button
+              type="button"
+              @click="closeBirthCalendar"
+            >
+              取消
+            </button>
+
+            <strong>选择出生日期</strong>
+
+            <span></span>
+          </header>
+
+          <van-calendar
+            :key="form.birth_date || 'default-birth-date'"
+            :poppable="false"
+            :show-title="false"
+            :show-confirm="false"
+            :show-mark="false"
+            :default-date="birthCalendarDefaultDate"
+            :min-date="minBirthDate"
+            :max-date="maxBirthDate"
+            switch-mode="year-month"
+            color="#1677ff"
+            :row-height="42"
+            @confirm="confirmBirthCalendar"
+          />
+
+          <p class="calendar-tip">
+            点击上方的年月切换按钮，再选择具体日期。
+          </p>
+        </section>
+      </div>
+
       <transition name="toast">
-        <div v-if="toastText" class="app-toast" role="status" aria-live="polite">{{ toastText }}</div>
+        <div
+          v-if="toastText"
+          class="app-toast"
+          role="status"
+          aria-live="polite"
+        >
+          {{ toastText }}
+        </div>
       </transition>
     </section>
   </main>
@@ -318,10 +513,16 @@ onMounted(loadProfile)
   width: 36px;
   height: 36px;
   place-items: center;
+  border: 0;
   border-radius: 50%;
   color: #101936;
   background: transparent;
+  cursor: pointer;
   font-size: 18px;
+}
+
+.personal-nav button:active {
+  background: rgba(231, 240, 251, 0.86);
 }
 
 .personal-nav strong {
@@ -460,9 +661,11 @@ onMounted(loadProfile)
   display: grid;
   height: 31px;
   place-items: center;
+  border: 0;
   border-radius: 999px;
   color: #63748b;
   background: #f1f5fa;
+  cursor: pointer;
   font-size: 11px;
   font-weight: 900;
   white-space: nowrap;
@@ -473,19 +676,16 @@ onMounted(loadProfile)
   background: #e4f2ff;
 }
 
-.date-input {
-  width: 100%;
-  height: 32px;
-  min-width: 0;
-  border: 0;
-  color: #101936;
-  background: transparent;
-  font-size: 13px;
-  font-weight: 800;
+.birth-field-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
 }
 
-.date-input::-webkit-calendar-picker-indicator {
-  opacity: 0.62;
+.birth-field-right :deep(.van-icon) {
+  color: #6e87a5;
+  font-size: 16px;
 }
 
 .age-tip {
@@ -507,10 +707,12 @@ onMounted(loadProfile)
   gap: 12px;
   align-items: center;
   margin-top: 10px;
+  border: 0;
   border-top: 8px solid #f1f2f4;
   padding: 15px 20px;
   color: #101936;
   background: #ffffff;
+  cursor: pointer;
   text-align: left;
 }
 
@@ -551,7 +753,12 @@ onMounted(loadProfile)
   bottom: 0;
   left: 0;
   padding: 9px 20px calc(10px + env(safe-area-inset-bottom));
-  background: linear-gradient(180deg, rgba(247, 249, 252, 0), rgba(247, 249, 252, 0.9) 34%, #f7f9fc 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(247, 249, 252, 0),
+    rgba(247, 249, 252, 0.9) 34%,
+    #f7f9fc 100%
+  );
 }
 
 .submit-bar :deep(.van-button) {
@@ -561,6 +768,139 @@ onMounted(loadProfile)
   box-shadow: 0 12px 24px rgba(22, 119, 255, 0.18);
   font-size: 13px;
   font-weight: 900;
+}
+
+.birth-calendar-layer {
+  position: absolute;
+  z-index: 100;
+  inset: 0;
+  display: flex;
+  justify-content: flex-end;
+  flex-direction: column;
+}
+
+.birth-calendar-mask {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(18, 30, 49, 0.64);
+}
+
+.birth-calendar-sheet {
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+  border-radius: 22px 22px 0 0;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  background: #ffffff;
+  box-shadow: 0 -12px 30px rgba(18, 30, 49, 0.16);
+}
+
+.calendar-sheet-header {
+  display: grid;
+  height: 54px;
+  grid-template-columns: 58px minmax(0, 1fr) 58px;
+  align-items: center;
+  border-bottom: 1px solid #edf1f5;
+  padding: 0 14px;
+}
+
+.calendar-sheet-header button {
+  border: 0;
+  padding: 0;
+  color: #7b8da4;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 900;
+  text-align: left;
+}
+
+.calendar-sheet-header strong {
+  color: #17243a;
+  font-size: 16px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.birth-calendar-sheet :deep(.van-calendar) {
+  height: 430px;
+}
+
+.birth-calendar-sheet :deep(.van-calendar__header) {
+  box-shadow: none;
+}
+
+.birth-calendar-sheet :deep(.van-calendar__subtitle) {
+  color: #17243a;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.birth-calendar-sheet :deep(.van-calendar__month-title) {
+  display: none;
+}
+
+.birth-calendar-sheet :deep(.van-calendar__weekdays) {
+  color: #8495aa;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.birth-calendar-sheet :deep(.van-calendar__day) {
+  color: #25364d;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.birth-calendar-sheet :deep(.van-calendar__selected-day) {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  background: #1677ff;
+}
+
+.birth-calendar-sheet :deep(.van-calendar__bottom-info) {
+  display: none;
+}
+
+.calendar-tip {
+  margin: 0;
+  padding: 4px 18px 10px;
+  color: #8a9aae;
+  font-size: 10px;
+  font-weight: 750;
+  text-align: center;
+}
+
+.app-toast {
+  position: absolute;
+  z-index: 120;
+  right: 50%;
+  bottom: calc(86px + env(safe-area-inset-bottom));
+  max-width: calc(100% - 48px);
+  border-radius: 999px;
+  padding: 10px 15px;
+  color: #ffffff;
+  background: rgba(19, 37, 66, 0.92);
+  box-shadow: 0 10px 24px rgba(20, 36, 65, 0.16);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.35;
+  transform: translateX(50%);
+}
+
+.toast-enter-active,
+.toast-leave-active {
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translate(50%, 10px);
 }
 
 @media (max-width: 360px) {
@@ -578,6 +918,10 @@ onMounted(loadProfile)
 
   .field-list :deep(.van-field__label) {
     width: 64px;
+  }
+
+  .age-tip {
+    max-width: 88px;
   }
 }
 </style>

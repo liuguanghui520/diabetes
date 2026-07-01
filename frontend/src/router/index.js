@@ -6,6 +6,8 @@ import HealthView from '../views/health/HealthView.vue'
 import HealthArchiveView from '../views/health/HealthArchiveView.vue'
 import PlanView from '../views/plan/PlanView.vue'
 import PlanTaskCreateView from '../views/plan/PlanTaskCreateView.vue'
+import CheckinRecordsView from '../views/plan/CheckinRecordsView.vue'
+import CheckinAnalysisView from '../views/plan/CheckinAnalysisView.vue'
 import NewsView from '../views/news/NewsView.vue'
 import AssistantView from '../views/assistant/AssistantView.vue'
 import UserCenterView from '../views/profile/UserCenterView.vue'
@@ -52,6 +54,16 @@ const routes = [
         path: '/plan/tasks/new',
         name: 'planTaskCreate',
         component: PlanTaskCreateView,
+    },
+    {
+        path: '/plan/checkins',
+        name: 'checkinRecords',
+        component: CheckinRecordsView,
+    },
+    {
+        path: '/plan/checkins/analysis',
+        name: 'checkinAnalysis',
+        component: CheckinAnalysisView,
     },
     {
         path: '/news',

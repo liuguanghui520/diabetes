@@ -6,8 +6,8 @@ import {
   ClockCircleOutlined,
   CoffeeOutlined,
   FireOutlined,
-  LeftOutlined,
   MedicineBoxOutlined,
+  RightOutlined,
   RobotOutlined,
   TrophyOutlined,
 } from '@ant-design/icons-vue'
@@ -17,13 +17,9 @@ import { apiGet, apiPost, pollWorkflowRun } from '../../api/request'
 
 const router = useRouter()
 
-const mode = ref('plan')
 const plan = ref(null)
-const analysis = ref(null)
-const checkinHistory = ref([])
 const toastText = ref('')
 const generatingPlan = ref(false)
-const analyzing = ref(false)
 const doneMap = ref({})
 
 const taskMeta = {
@@ -81,16 +77,13 @@ const tasks = computed(() => {
   return source.map((task, index) => {
     const id = task.id || task.task_id || `task-${index}`
 
-    const taskType = normalizeTaskType(
-      task.task_type || task.category || task.type,
-      index,
-    )
-
     return {
       id,
-      taskType,
+      taskType: normalizeTaskType(
+        task.task_type || task.category || task.type,
+        index,
+      ),
       title: task.title || task.name || '生活任务',
-      description: task.description || task.desc || task.content || '按计划完成后即可打卡。',
       target: task.target || task.target_value || '',
       time: task.target_time || task.time || task.schedule_time || '全天',
       completed: Object.prototype.hasOwnProperty.call(doneMap.value, id)
@@ -109,7 +102,7 @@ const completedCount = computed(() => {
 })
 
 const completionRate = computed(() => {
-  if (totalCount.value === 0) {
+  if (!totalCount.value) {
     return 0
   }
 
@@ -281,71 +274,10 @@ async function toggleTask(task) {
   }
 }
 
-async function loadAnalysis() {
-  mode.value = 'analysis'
-  analyzing.value = true
-  analysis.value = null
-  loadCheckinHistory()
-
-  try {
-    const result = await apiPost(
-      '/api/checkins/analysis',
-      {
-        days: 7,
-      },
-      {
-        idempotent: true,
-      },
-    )
-
-    const requestId = result.data?.request_id
-      || result.data?.workflow?.request_id
-
-    if (requestId) {
-      const workflow = await pollWorkflowRun(requestId)
-
-      if (workflow.status === 'failed') {
-        throw new Error(
-          workflow.error_message || 'AI 打卡分析失败。',
-        )
-      }
-
-      analysis.value = workflow.result?.data
-        || workflow.result
-        || null
-    } else {
-      analysis.value = result.data || null
-    }
-  } catch (error) {
-    analysis.value = null
-    showToast(error.message || '打卡分析暂不可用，请稍后再试。')
-  } finally {
-    analyzing.value = false
-  }
-}
-
-async function loadCheckinHistory() {
-  try {
-    const result = await apiGet('/api/checkins/history?days=30')
-    checkinHistory.value = result.data?.history || []
-  } catch {
-    checkinHistory.value = []
-  }
-}
-
-function barHeight(rate) {
-  return Math.max(4, Math.round((rate / 100) * 120))
-}
-
-function barColor(rate) {
-  if (rate >= 80) return '#00c48c'
-  if (rate >= 50) return '#1677ff'
-  if (rate > 0) return '#ffa940'
-  return '#e8e8e8'
-}
-
-function closeAnalysis() {
-  mode.value = 'plan'
+function openCheckinRecords() {
+  router.push({
+    name: 'checkinRecords',
+  })
 }
 
 function handleTabChange(key) {
@@ -360,36 +292,13 @@ onMounted(loadPlan)
 <template>
   <main class="plan-page">
     <section class="plan-phone">
-      <header
-        v-if="mode === 'plan'"
-        class="plan-nav plan-main-nav"
-      >
+      <header class="plan-nav">
         <h1>生活方案</h1>
 
         <TopUserActions />
       </header>
 
-      <header
-        v-else
-        class="plan-nav plan-analysis-nav"
-      >
-        <button
-          type="button"
-          aria-label="返回生活方案"
-          @click="closeAnalysis"
-        >
-          <LeftOutlined />
-        </button>
-
-        <h1>打卡分析</h1>
-
-        <span></span>
-      </header>
-
-      <div
-        v-if="mode === 'plan'"
-        class="plan-scroll"
-      >
+      <div class="plan-scroll">
         <section class="plan-overview">
           <header class="overview-head">
             <div>
@@ -444,10 +353,10 @@ onMounted(loadPlan)
               plain
               type="primary"
               round
-              @click="loadAnalysis"
+              @click="openCheckinRecords"
             >
-              <TrophyOutlined />
-              打卡分析
+              <ClockCircleOutlined />
+              打卡记录
             </van-button>
           </div>
         </section>
@@ -518,108 +427,25 @@ onMounted(loadPlan)
           </article>
         </section>
 
-        <section class="plan-tip">
-          <ClockCircleOutlined />
-
-          <div>
-            <strong>按计划完成即可打卡</strong>
-            <p>完成当天任务后，可以在“打卡分析”查看近 7 天的生活执行情况。</p>
-          </div>
-        </section>
-      </div>
-
-      <div
-        v-else
-        class="analysis-scroll"
-      >
-        <section class="analysis-overview">
-          <span>近 7 天任务完成率</span>
-
-          <strong>
-            {{ analysis?.completion_rate != null ? analysis.completion_rate + '%' : '--' }}
-          </strong>
-
-          <van-progress
-            :percentage="analysis?.completion_rate ?? 0"
-            :show-pivot="false"
-            stroke-width="8"
-            color="#1677ff"
-            track-color="#dce8f7"
-          />
-
-          <p>
-            {{
-              analysis?.summary
-                || '继续保持饮食、运动和复查任务的规律完成，系统会逐步形成更准确的执行分析。'
-            }}
-          </p>
-        </section>
-
-        <section class="analysis-card">
-          <header>
+        <button
+          type="button"
+          class="record-entry"
+          @click="openCheckinRecords"
+        >
+          <span class="record-entry-icon">
             <TrophyOutlined />
-            <h2>近 30 天完成率趋势</h2>
-          </header>
+          </span>
 
-          <div v-if="checkinHistory.length" class="chart-container">
-            <div class="chart-bars">
-              <div
-                v-for="(item, i) in checkinHistory"
-                :key="item.date"
-                class="chart-bar-wrap"
-                :title="`${item.date.slice(5)}: ${item.completion_rate}%`"
-              >
-                <div
-                  class="chart-bar"
-                  :style="{
-                    height: barHeight(item.completion_rate) + 'px',
-                    background: barColor(item.completion_rate),
-                  }"
-                />
-                <small v-if="i % 3 === 0">{{ item.date.slice(5) }}</small>
-              </div>
-            </div>
-            <div class="chart-legend">
-              <span><i style="background:#00c48c" /> ≥80%</span>
-              <span><i style="background:#1677ff" /> ≥50%</span>
-              <span><i style="background:#ffa940" /> &lt;50%</span>
-              <span><i style="background:#e8e8e8" /> 无记录</span>
-            </div>
-          </div>
-          <p v-else class="chart-empty">完成每日打卡后，这里会展示近 30 天的完成率趋势。</p>
-        </section>
+          <span class="record-entry-copy">
+            <strong>打卡记录</strong>
+            <small>查看每日完成情况，再进入打卡分析</small>
+          </span>
 
-        <section class="analysis-card">
-          <header>
-            <CheckCircleFilled />
-            <h2>生活评价</h2>
-          </header>
-
-          <p>
-            {{
-              analysis?.evaluation
-                || '当前还没有足够的连续打卡记录，请先从每天完成一项任务开始。'
-            }}
-          </p>
-        </section>
-
-        <section class="analysis-card">
-          <header>
-            <TrophyOutlined />
-            <h2>改进建议</h2>
-          </header>
-
-          <p>
-            {{
-              analysis?.advice
-                || '建议优先完成最容易执行的任务，例如记录饮食、饭后散步或按时休息。'
-            }}
-          </p>
-        </section>
+          <RightOutlined />
+        </button>
       </div>
 
       <LiquidTabBar
-        v-if="mode === 'plan'"
         active-key="plan"
         @change="handleTabChange"
       />
@@ -662,20 +488,16 @@ onMounted(loadPlan)
 }
 
 .plan-nav {
-  flex: 0 0 auto;
-  border: 0;
-  background: transparent;
-}
-
-.plan-main-nav {
   display: flex;
   height: 64px;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px 4px;
+  background: transparent;
 }
 
-.plan-main-nav h1 {
+.plan-nav h1 {
   margin: 0;
   color: #17243a;
   font-size: 20px;
@@ -683,46 +505,11 @@ onMounted(loadPlan)
   letter-spacing: -0.3px;
 }
 
-.plan-main-nav :deep(.top-user-actions) {
+.plan-nav :deep(.top-user-actions) {
   gap: 6px;
 }
 
-.plan-analysis-nav {
-  display: grid;
-  height: 58px;
-  grid-template-columns: 46px minmax(0, 1fr) 46px;
-  align-items: center;
-  padding-top: 8px;
-}
-
-.plan-analysis-nav h1 {
-  margin: 0;
-  color: #17243a;
-  font-size: 17px;
-  font-weight: 900;
-  text-align: center;
-}
-
-.plan-analysis-nav button {
-  display: grid;
-  width: 38px;
-  height: 38px;
-  place-items: center;
-  justify-self: center;
-  border: 0;
-  border-radius: 50%;
-  color: #17243a;
-  background: transparent;
-  cursor: pointer;
-  font-size: 20px;
-}
-
-.plan-analysis-nav button:active {
-  background: rgba(255, 255, 255, 0.62);
-}
-
-.plan-scroll,
-.analysis-scroll {
+.plan-scroll {
   min-height: 0;
   flex: 1;
   overflow-y: auto;
@@ -730,8 +517,7 @@ onMounted(loadPlan)
   scrollbar-width: none;
 }
 
-.plan-scroll::-webkit-scrollbar,
-.analysis-scroll::-webkit-scrollbar {
+.plan-scroll::-webkit-scrollbar {
   display: none;
 }
 
@@ -987,91 +773,61 @@ onMounted(loadPlan)
   line-height: 1.6;
 }
 
-.plan-tip {
+.record-entry {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
-  gap: 10px;
-  align-items: start;
-  margin-top: 20px;
-  border-radius: 15px;
-  padding: 13px;
-  color: #5d7b9f;
-  background: #eaf3ff;
-}
-
-.plan-tip > svg {
-  margin-top: 1px;
-  color: #1677ff;
-  font-size: 19px;
-}
-
-.plan-tip strong {
-  display: block;
-  color: #365b88;
-  font-size: 12px;
-  font-weight: 900;
-}
-
-.plan-tip p {
-  margin: 4px 0 0;
-  color: #6d87a7;
-  font-size: 10px;
-  font-weight: 750;
-  line-height: 1.55;
-}
-
-.analysis-overview,
-.analysis-card {
-  border-radius: 18px;
-  padding: 17px;
+  width: 100%;
+  grid-template-columns: 42px minmax(0, 1fr) 18px;
+  gap: 11px;
+  align-items: center;
+  margin-top: 22px;
+  border: 0;
+  border-radius: 17px;
+  padding: 14px;
+  color: #9cafc6;
   background: #ffffff;
   box-shadow: 0 8px 18px rgba(45, 89, 142, 0.06);
+  cursor: pointer;
+  text-align: left;
 }
 
-.analysis-overview span {
-  color: #7890aa;
-  font-size: 11px;
-  font-weight: 800;
+.record-entry:active {
+  background: #f7fbff;
 }
 
-.analysis-overview strong {
+.record-entry-icon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 13px;
+  color: #1677ff;
+  background: #eaf3ff;
+  font-size: 20px;
+}
+
+.record-entry-copy {
+  min-width: 0;
+}
+
+.record-entry-copy strong,
+.record-entry-copy small {
   display: block;
-  margin: 10px 0 13px;
-  color: #1677ff;
-  font-size: 44px;
-  font-weight: 900;
-  letter-spacing: -2px;
 }
 
-.analysis-overview p,
-.analysis-card p {
-  margin: 14px 0 0;
-  color: #71849c;
-  font-size: 12px;
-  font-weight: 750;
-  line-height: 1.7;
-}
-
-.analysis-card {
-  margin-top: 15px;
-}
-
-.analysis-card header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.analysis-card header svg {
-  color: #1677ff;
-  font-size: 18px;
-}
-
-.analysis-card h2 {
-  margin: 0;
+.record-entry-copy strong {
   color: #25364d;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 900;
+}
+
+.record-entry-copy small {
+  overflow: hidden;
+  margin-top: 4px;
+  color: #8999ad;
+  font-size: 10px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .app-toast {
@@ -1105,18 +861,17 @@ onMounted(loadPlan)
 }
 
 @media (max-width: 360px) {
-  .plan-scroll,
-  .analysis-scroll {
+  .plan-scroll {
     padding-right: 13px;
     padding-left: 13px;
   }
 
-  .plan-main-nav {
+  .plan-nav {
     padding-right: 13px;
     padding-left: 13px;
   }
 
-  .plan-main-nav h1 {
+  .plan-nav h1 {
     font-size: 18px;
   }
 
@@ -1135,69 +890,5 @@ onMounted(loadPlan)
   .task-status {
     min-width: 42px;
   }
-}
-
-/* ---------- 打卡历史曲线图 ---------- */
-.chart-container {
-  margin-top: 4px;
-}
-
-.chart-bars {
-  display: flex;
-  align-items: flex-end;
-  gap: 3px;
-  height: 140px;
-  padding: 0 2px 18px;
-}
-
-.chart-bar-wrap {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-end;
-  min-width: 0;
-  position: relative;
-  height: 100%;
-}
-
-.chart-bar {
-  width: 100%;
-  max-width: 14px;
-  border-radius: 3px 3px 0 0;
-  min-height: 2px;
-  transition: height 0.3s ease;
-}
-
-.chart-bar-wrap small {
-  position: absolute;
-  bottom: -18px;
-  font-size: 9px;
-  color: #999;
-  white-space: nowrap;
-}
-
-.chart-legend {
-  display: flex;
-  gap: 12px;
-  margin-top: 10px;
-  font-size: 11px;
-  color: #888;
-}
-
-.chart-legend i {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
-  margin-right: 3px;
-  vertical-align: -1px;
-}
-
-.chart-empty {
-  text-align: center;
-  font-size: 13px;
-  color: #999;
-  padding: 24px 0 8px;
 }
 </style>
