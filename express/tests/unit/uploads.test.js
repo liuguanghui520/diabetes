@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { errors } from '../../src/http/errors.js'
+import { buildPublicFileUrl } from '../../src/modules/uploads/routes.js'
 
 // We test the resolveOwnedUpload and sanitizeAttachmentPayload functions
 // by mocking the store dependency
@@ -96,6 +97,42 @@ describe('uploads', () => {
 
       const result = await sanitizeAttachmentPayload(mockStore, 'user-1', [])
       expect(result).toEqual([])
+    })
+  })
+
+  describe('buildPublicFileUrl', () => {
+    const cfg = { upload: { publicBaseUrl: 'http://cdn.example.com' } }
+
+    it('uses public-uploads for avatar', () => {
+      const url = buildPublicFileUrl(cfg, 'file_x', 'avatar')
+      expect(url).toContain('/public-uploads/')
+      expect(url).toContain('cdn.example.com')
+    })
+
+    it('uses public-uploads for cover', () => {
+      const url = buildPublicFileUrl(cfg, 'file_x', 'cover')
+      expect(url).toContain('/public-uploads/')
+    })
+
+    it('uses regular uploads for report', () => {
+      const url = buildPublicFileUrl(cfg, 'file_x', 'report')
+      expect(url).not.toContain('public-uploads')
+      expect(url).toContain('/api/uploads/')
+    })
+
+    it('uses regular uploads for assistant', () => {
+      const url = buildPublicFileUrl(cfg, 'file_x', 'assistant')
+      expect(url).toContain('/api/uploads/')
+    })
+
+    it('returns relative path when no base URL', () => {
+      const url = buildPublicFileUrl({ upload: {} }, 'file_x', 'avatar')
+      expect(url).toBe('/api/public-uploads/file_x')
+    })
+
+    it('returns relative path for private file with no base', () => {
+      const url = buildPublicFileUrl({ upload: {} }, 'file_x', 'report')
+      expect(url).toBe('/api/uploads/file_x')
     })
   })
 })

@@ -50,7 +50,7 @@ function uploadBaseDir(config) {
   return path.resolve(__dirname, '..', '..', '..', 'uploads')
 }
 
-function buildPublicFileUrl(config, fileId, bizType = '') {
+export function buildPublicFileUrl(config, fileId, bizType = '') {
   const base = String(config.upload?.publicBaseUrl || '').trim().replace(/\/$/, '')
   const isPublic = bizType === 'avatar' || bizType === 'cover'
   const routePath = `/api/${isPublic ? 'public-uploads' : 'uploads'}/${encodeURIComponent(fileId)}`
