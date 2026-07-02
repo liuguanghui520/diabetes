@@ -243,6 +243,7 @@ async function saveProfile() {
       nickname: savedProfile.nickname
         || savedUser.nickname
         || form.nickname.trim(),
+      avatar_url: savedUser.avatar_url || form.avatar_url || '',
     }) || storedUser.value
 
     applyProfile({

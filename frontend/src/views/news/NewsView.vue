@@ -632,7 +632,8 @@ onMounted(async () => {
               class="comment-row"
             >
               <span class="comment-avatar">
-                {{ comment.user.slice(0, 1) }}
+                <img v-if="comment.user_avatar" :src="comment.user_avatar" class="comment-avatar-img" alt="" />
+                <span v-else>{{ comment.user.slice(0, 1) }}</span>
               </span>
 
               <div>
@@ -1302,6 +1303,14 @@ onMounted(async () => {
   background: linear-gradient(135deg, #ff7a00, #ff4d4f);
   font-size: 14px;
   font-weight: 900;
+  overflow: hidden;
+}
+
+.comment-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
 }
 
 .comment-row header {

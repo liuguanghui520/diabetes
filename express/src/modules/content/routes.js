@@ -177,6 +177,7 @@ function normalizeArticleComment(comment) {
     article_id: comment.article_id,
     parent_id: comment.parent_id || null,
     user: comment.nickname || comment.username || '用户',
+    user_avatar: comment.avatar_url || null,
     content: comment.content,
     like_count: Number(comment.like_count || 0),
     liked: Boolean(comment.liked),

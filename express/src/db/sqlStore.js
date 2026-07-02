@@ -1110,6 +1110,7 @@ export function createSqlStore(pool) {
            c.created_at,
            u.nickname,
            u.username,
+           u.avatar_url,
            exists(
              select 1 from article_comment_like acl
              where acl.comment_id = c.id and acl.user_id = $2

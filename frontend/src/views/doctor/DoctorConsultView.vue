@@ -12,12 +12,13 @@ import {
   SendOutlined,
   SmileOutlined,
 } from '@ant-design/icons-vue'
-import { apiGet, authorizedFetch } from '../../api/request'
+import { apiGet, authorizedFetch, getStoredUser } from '../../api/request'
 import { uploadSingleFile } from '../../api/uploads'
 import { renderChatHtml } from '../../utils/chatRichText'
 import { consumeSseStream } from '../../utils/sse'
 
 const router = useRouter()
+const storedUser = ref(getStoredUser())
 const route = useRoute()
 
 const pageMode = ref('list')
@@ -798,7 +799,8 @@ onMounted(async () => {
                 v-if="item.role === 'user'"
                 class="message-avatar user-avatar"
               >
-                我
+                <img v-if="storedUser?.avatar_url" :src="storedUser.avatar_url" class="msg-avatar-img" alt="" />
+                <span v-else>我</span>
               </span>
             </article>
           </template>
