@@ -18,6 +18,7 @@ markdown.renderer.rules.link_open = (tokens, idx, options, env, self) => {
   return defaultLinkOpen(tokens, idx, options, env, self)
 }
 
+/* istanbul ignore next — default param never triggered internally */
 function escapeHtml(value = '') {
   return String(value)
     .replace(/&/g, '&amp;')

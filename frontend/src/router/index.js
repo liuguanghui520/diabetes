@@ -156,6 +156,7 @@ router.beforeEach((to) => {
     const currentUser = getStoredUser()
     const isAdmin = ['admin', 'super_admin'].includes(currentUser?.role)
 
+    /* istanbul ignore next — route '/' has redirect:'/home' before guard runs */
     if (to.path === '/' && hasSession && isAdmin) {
         return {
             name: 'adminDashboard',

@@ -22,5 +22,36 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
+    test: {
+      environment: 'jsdom',
+      globals: true,
+      setupFiles: ['./src/test/unit/setup.js'],
+      include: ['src/test/unit/**/*.{test,spec}.js'],
+      coverage: {
+        provider: 'v8',
+        reporter: ['text', 'html'],
+        reportsDirectory: './coverage',
+        include: [
+          'src/api/**/*.js',
+          'src/components/**/*.vue',
+          'src/router/**/*.js',
+          'src/utils/**/*.js',
+          'src/views/**/*.vue',
+          'src/App.vue',
+        ],
+        exclude: [
+          'src/main.js',
+          'src/test/**',
+          '**/*.test.js',
+          '**/*.spec.js',
+        ],
+        watermarks: {
+          statements: [90, 100],
+          branches: [90, 100],
+          functions: [90, 100],
+          lines: [90, 100],
+        },
+      },
+    },
   }
 })

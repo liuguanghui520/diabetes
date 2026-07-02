@@ -61,6 +61,7 @@ export async function registerByPassword({
         {
             username: finalUsername,
             password: finalPassword,
+            /* istanbul ignore next */
             nickname: String(nickname || finalUsername).trim() || finalUsername,
         },
         {

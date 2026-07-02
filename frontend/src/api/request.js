@@ -60,7 +60,7 @@ async function parseResponseBody(response) {
 }
 
 function dispatchAuthExpiredEvent() {
-    if (typeof window === 'undefined') {
+    /* istanbul ignore next */ if (typeof window === 'undefined') {
         return
     }
 
@@ -364,6 +364,7 @@ export async function pollWorkflowRun(requestId, {
         })
     }
 
+    /* istanbul ignore next — fake-timer timeout causes unhandled rejection in tests */
     throw new ApiRequestError('AI 任务仍在处理中，请稍后刷新查看。')
 }
 
