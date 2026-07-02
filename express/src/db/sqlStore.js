@@ -318,15 +318,11 @@ export function createSqlStore(pool) {
     },
 
     async getUploadByFileId(userId, fileId) {
-      const result = await pool.query(
-        `select *,
-            '/api/uploads/' || file_id as url
-         from uploaded_file
-         where file_id = $1
-           and user_id = $2
-         limit 1`,
-        [fileId, userId],
-      )
+      const query = userId != null
+        ? `select *, '/api/uploads/' || file_id as url from uploaded_file where file_id = $1 and user_id = $2 limit 1`
+        : `select *, '/api/uploads/' || file_id as url from uploaded_file where file_id = $1 limit 1`
+      const params = userId != null ? [fileId, userId] : [fileId]
+      const result = await pool.query(query, params)
       return one(result)
     },
 
@@ -348,9 +344,18 @@ export function createSqlStore(pool) {
           await client.query(
             `update sys_user
              set nickname = $2,
+                 avatar_url = coalesce($3, avatar_url),
                  updated_at = current_timestamp
              where id = $1`,
-            [userId, input.nickname || null],
+            [userId, input.nickname || null, input.avatar_url ?? undefined],
+          )
+        } else if (input.avatar_url !== undefined) {
+          await client.query(
+            `update sys_user
+             set avatar_url = $2,
+                 updated_at = current_timestamp
+             where id = $1`,
+            [userId, input.avatar_url || null],
           )
         }
 

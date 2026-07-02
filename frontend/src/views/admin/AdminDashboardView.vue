@@ -13,6 +13,7 @@ import {
 import { apiGet, apiPost, apiPut, apiDelete, authorizedFetch, getStoredUser, hasAuthSession } from '../../api/request'
 import { consumeSseStream } from '../../utils/sse'
 import { renderChatHtml } from '../../utils/chatRichText'
+import { uploadSingleFile } from '../../api/uploads'
 
 const router = useRouter()
 const activeSection = ref('overview')
@@ -31,6 +32,8 @@ const adminHistoryLoaded = ref(false)
 const adminMessages = ref([
   { role: 'assistant', content: '可以用自然语言查询后台数据，或草拟医生资料、坐诊时间等维护操作。涉及写库时请先确认。' },
 ])
+const articleCoverInput = ref(null)
+const doctorAvatarInput = ref(null)
 const articleForm = ref({
   title: '',
   summary: '',
@@ -181,6 +184,26 @@ async function changeArticlePage(page) {
   } catch (error) {
     showNotice(error.message || '加载失败。')
   }
+}
+
+async function handleArticleCoverUpload(e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  try {
+    const uploaded = await uploadSingleFile(file, 'avatar')
+    articleForm.value.cover_url = uploaded.url
+  } catch (err) { showNotice(err.message || '上传失败') }
+  e.target.value = ''
+}
+
+async function handleDoctorAvatarUpload(e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  try {
+    const uploaded = await uploadSingleFile(file, 'avatar')
+    doctorForm.value.avatar_url = uploaded.url
+  } catch (err) { showNotice(err.message || '上传失败') }
+  e.target.value = ''
 }
 
 async function createArticle() {
@@ -521,7 +544,13 @@ onMounted(async () => {
             <input v-model="articleForm.summary" aria-label="文章摘要" placeholder="摘要" />
             <textarea v-model="articleForm.content" aria-label="文章正文" placeholder="正文（支持 Markdown）"></textarea>
             <div class="form-row">
-              <input v-model="articleForm.cover_url" aria-label="封面图 URL" placeholder="封面图 URL（可选）" />
+              <div class="cover-upload">
+                <input v-model="articleForm.cover_url" aria-label="封面图 URL" placeholder="封面图 URL" />
+                <input type="file" accept="image/*" aria-label="上传封面图" style="display:none"
+                  :ref="el => articleCoverInput = el" @change="handleArticleCoverUpload" />
+                <button type="button" @click="articleCoverInput?.click()" class="upload-btn">📎</button>
+                <img v-if="articleForm.cover_url && articleForm.cover_url.startsWith('http')" :src="articleForm.cover_url" class="cover-preview" />
+              </div>
               <input v-model="articleForm.author" aria-label="作者" placeholder="作者（可选）" />
             </div>
             <div class="form-row">
@@ -592,7 +621,13 @@ onMounted(async () => {
             <input v-model="doctorForm.title" aria-label="职称" placeholder="职称" />
             <input v-model="doctorForm.department" aria-label="科室" placeholder="科室" />
             <input v-model="doctorForm.specialty" aria-label="擅长方向" placeholder="擅长方向" />
-            <input v-model="doctorForm.avatar_url" aria-label="头像 URL" placeholder="头像 URL" />
+            <div class="avatar-upload">
+              <img v-if="doctorForm.avatar_url && doctorForm.avatar_url.startsWith('http')" :src="doctorForm.avatar_url" class="doctor-avatar-preview" />
+              <input v-model="doctorForm.avatar_url" aria-label="头像 URL" placeholder="头像 URL" />
+              <input type="file" accept="image/*" aria-label="上传头像" style="display:none"
+                :ref="el => doctorAvatarInput = el" @change="handleDoctorAvatarUpload" />
+              <button type="button" @click="doctorAvatarInput?.click()" class="upload-btn">📎</button>
+            </div>
             <input v-model="doctorForm.license_no" aria-label="执业编号" placeholder="执业编号" />
             <textarea v-model="doctorForm.intro" aria-label="医生简介" placeholder="医生简介"></textarea>
             <button type="button" @click="saveDoctor">保存医生资料</button>

@@ -482,6 +482,14 @@ onMounted(async () => {
             </div>
 
             <h2>{{ article.title }}</h2>
+
+            <img
+              v-if="article.cover_url"
+              :src="article.cover_url"
+              class="article-cover"
+              alt=""
+            />
+
             <p>{{ article.summary }}</p>
 
             <footer>
@@ -554,6 +562,13 @@ onMounted(async () => {
           </div>
 
           <h1>{{ selectedArticle.title }}</h1>
+
+          <img
+            v-if="selectedArticle.cover_url"
+            :src="selectedArticle.cover_url"
+            class="detail-cover"
+            alt=""
+          />
 
           <section class="detail-author">
             <span class="detail-avatar">
@@ -1398,5 +1413,14 @@ onMounted(async () => {
   .detail-body p {
     font-size: 16px;
   }
+}
+
+.article-cover,
+.detail-cover {
+  width: 100%;
+  max-height: 220px;
+  object-fit: cover;
+  border-radius: 12px;
+  margin-bottom: 12px;
 }
 </style>

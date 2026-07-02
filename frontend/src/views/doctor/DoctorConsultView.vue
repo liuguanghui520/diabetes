@@ -782,7 +782,8 @@ onMounted(async () => {
                 :aria-label="`查看${currentDoctor?.name || '医生'}简介`"
                 @click="openDoctorProfile(currentDoctor)"
               >
-                {{ currentDoctor?.avatar || '医' }}
+                <img v-if="currentDoctor?.avatar_url" :src="currentDoctor.avatar_url" class="msg-avatar-img" alt="" />
+                <span v-else>{{ currentDoctor?.avatar || '医' }}</span>
               </button>
 
               <div
@@ -1165,15 +1166,15 @@ onMounted(async () => {
 }
 
 .doctor-avatar.green {
-  background: linear-gradient(135deg, #00b86b, #00c8d8);
+  background-image: linear-gradient(135deg, #00b86b, #00c8d8);
 }
 
 .doctor-avatar.orange {
-  background: linear-gradient(135deg, #ff8a00, #ff4d4f);
+  background-image: linear-gradient(135deg, #ff8a00, #ff4d4f);
 }
 
 .doctor-avatar.purple {
-  background: linear-gradient(135deg, #7b3cff, #1677ff);
+  background-image: linear-gradient(135deg, #7b3cff, #1677ff);
 }
 
 .doctor-avatar i {
@@ -1387,22 +1388,33 @@ onMounted(async () => {
   border: 0;
   border-radius: 50%;
   color: #ffffff;
-  background: linear-gradient(135deg, #1677ff, #00b8ff);
+  background-color: #1677ff;
+  background-image: linear-gradient(135deg, #1677ff, #00b8ff);
+  background-size: cover;
+  background-position: center;
   cursor: pointer;
   font-size: 13px;
   font-weight: 900;
+  overflow: hidden;
+}
+
+.msg-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
 }
 
 .message-avatar.green {
-  background: linear-gradient(135deg, #00b86b, #00c8d8);
+  background-image: linear-gradient(135deg, #00b86b, #00c8d8);
 }
 
 .message-avatar.orange {
-  background: linear-gradient(135deg, #ff8a00, #ff4d4f);
+  background-image: linear-gradient(135deg, #ff8a00, #ff4d4f);
 }
 
 .message-avatar.purple {
-  background: linear-gradient(135deg, #7b3cff, #1677ff);
+  background-image: linear-gradient(135deg, #7b3cff, #1677ff);
 }
 
 .user-avatar {

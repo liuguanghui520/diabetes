@@ -50,10 +50,10 @@ function uploadBaseDir(config) {
   return path.resolve(__dirname, '..', '..', '..', 'uploads')
 }
 
-function buildPublicFileUrl(config, fileId) {
+function buildPublicFileUrl(config, fileId, bizType = '') {
   const base = String(config.upload?.publicBaseUrl || '').trim().replace(/\/$/, '')
-  const routePath = `/api/uploads/${encodeURIComponent(fileId)}`
-
+  const isPublic = bizType === 'avatar' || bizType === 'cover'
+  const routePath = `/api/${isPublic ? 'public-uploads' : 'uploads'}/${encodeURIComponent(fileId)}`
   return base ? `${base}${routePath}` : routePath
 }
 
@@ -212,7 +212,7 @@ export function registerUploadRoutes(router, deps) {
       mime_type: file.mimetype || 'application/octet-stream',
       size_bytes: Number(file.size || 0),
       storage_path: path.resolve(file.path),
-      url: buildPublicFileUrl(deps.config, fileId),
+      url: buildPublicFileUrl(deps.config, fileId, bizType),
     }
 
     try {
@@ -233,17 +233,22 @@ export function registerUploadRoutes(router, deps) {
 
   router.get('/uploads/:fileId', auth, asyncHandler(async (req, res) => {
     const file = await deps.store.getUploadByFileId?.(req.user.id, req.params.fileId)
-
-    if (!file) {
-      throw errors.notFound('附件不存在或无权访问。')
-    }
-
+    if (!file) throw errors.notFound('附件不存在或无权访问。')
     res.setHeader('Content-Type', file.mime_type || 'application/octet-stream')
     res.setHeader('Content-Length', String(file.size_bytes || 0))
-    res.setHeader(
-      'Content-Disposition',
-      `inline; filename*=UTF-8''${encodeURIComponent(file.file_name || 'file')}`,
-    )
+    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(file.file_name || 'file')}`)
+    res.sendFile(path.resolve(file.storage_path))
+  }))
+
+  // 公开文件访问(头像/封面)，无需鉴权
+  router.get('/public-uploads/:fileId', asyncHandler(async (req, res) => {
+    const file = await deps.store.getUploadByFileId?.(null, req.params.fileId)
+    if (!file || !['avatar', 'cover'].includes(file.biz_type || '')) {
+      throw errors.notFound('附件不存在')
+    }
+    res.setHeader('Content-Type', file.mime_type || 'application/octet-stream')
+    res.setHeader('Content-Length', String(file.size_bytes || 0))
+    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(file.file_name || 'file')}`)
     res.sendFile(path.resolve(file.storage_path))
   }))
 }

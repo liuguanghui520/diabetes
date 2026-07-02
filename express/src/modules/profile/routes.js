@@ -4,6 +4,7 @@ import { authMiddleware } from '../auth/auth.js'
 
 const profileSchema = z.object({
   nickname: z.string().max(16).optional(),
+  avatar_url: z.string().max(500).optional(),
   diagnosed_diabetes: z.boolean().nullable().optional(),
   diabetes_type: z.enum(['type1', 'type2', 'gestational', 'special', 'unknown']).nullable().optional(),
   age: z.number().int().min(0).max(120).optional(),
@@ -85,6 +86,7 @@ export function registerProfileRoutes(router, deps) {
             id: user.id,
             username: user.username,
             nickname: user.nickname,
+            avatar_url: user.avatar_url || null,
             role: user.role,
             phone: user.phone || null,
             email: user.email || null,

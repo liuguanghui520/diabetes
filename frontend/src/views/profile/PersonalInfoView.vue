@@ -9,6 +9,7 @@ import {
   UserOutlined,
 } from '@ant-design/icons-vue'
 import { apiGet, apiPut, getStoredUser, updateStoredUser } from '../../api/request'
+import { uploadSingleFile } from '../../api/uploads'
 
 const router = useRouter()
 const storedUser = ref(getStoredUser())
@@ -19,8 +20,11 @@ const showBirthCalendar = ref(false)
 const minBirthDate = new Date(1900, 0, 1)
 const maxBirthDate = new Date()
 
+const avatarInput = ref(null)
+
 const form = reactive({
   nickname: storedUser.value?.nickname || storedUser.value?.username || '',
+  avatar_url: '',
   birth_date: '',
   gender: '',
   hometown: '',
@@ -127,6 +131,16 @@ function calculateAge(value) {
   return age >= 0 && age < 130 ? age : null
 }
 
+async function handleAvatarUpload(e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  try {
+    const uploaded = await uploadSingleFile(file, 'avatar')
+    form.avatar_url = uploaded.url
+  } catch (err) { showToast(err.message || '上传失败') }
+  e.target.value = ''
+}
+
 function showToast(text) {
   toastText.value = text
 
@@ -190,6 +204,7 @@ function applyProfile(data = {}) {
       || storedUser.value?.nickname
       || storedUser.value?.username
       || '',
+    avatar_url: data.user?.avatar_url || profile.avatar_url || storedUser.value?.avatar_url || '',
     birth_date: formatDateInput(profile.birth_date),
     gender: profile.gender || '',
     hometown: profile.hometown || '',
@@ -213,6 +228,7 @@ async function saveProfile() {
   try {
     const response = await apiPut('/api/profile', {
       nickname: form.nickname.trim() || storedUser.value?.username || '',
+      avatar_url: form.avatar_url || null,
       birth_date: form.birth_date || null,
       gender: form.gender || null,
       hometown: form.hometown.trim() || null,
@@ -263,9 +279,11 @@ onMounted(loadProfile)
         </header>
 
         <section class="identity-block">
-          <div class="avatar-box">
-            <span>{{ (form.nickname || '测').slice(0, 1) }}</span>
-          </div>
+          <button class="avatar-box" type="button" aria-label="更换头像" @click="avatarInput?.click()">
+            <img v-if="form.avatar_url" :src="form.avatar_url" class="avatar-img" />
+            <span v-else>{{ (form.nickname || '测').slice(0, 1) }}</span>
+          </button>
+          <input ref="avatarInput" type="file" accept="image/*" aria-label="上传头像" style="display:none" @change="handleAvatarUpload" />
 
           <div>
             <p>基础资料</p>

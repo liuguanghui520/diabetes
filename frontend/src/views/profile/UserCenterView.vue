@@ -128,7 +128,8 @@ onMounted(loadData)
             @click="go('personalInfo')"
           >
             <div class="avatar-tile">
-              <span>{{ displayName.slice(0, 1) }}</span>
+              <img v-if="profile?.user?.avatar_url" :src="profile.user.avatar_url" class="avatar-img" />
+              <span v-else>{{ displayName.slice(0, 1) }}</span>
             </div>
 
             <div class="user-copy">
@@ -323,6 +324,13 @@ onMounted(loadData)
   background:
     linear-gradient(135deg, rgba(22, 119, 255, 0.18), rgba(0, 184, 148, 0.18)),
     #eef6ff;
+  overflow: hidden;
+}
+
+.avatar-tile .avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .avatar-tile span {
