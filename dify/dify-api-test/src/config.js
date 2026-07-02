@@ -77,7 +77,7 @@ export const config = {
   maxElapsedTime: readNumberEnv("DIFY_MAX_ELAPSED_TIME", 60),
   maxTotalTokens: readNumberEnv("DIFY_MAX_TOTAL_TOKENS", 10000),
   maxTotalSteps: readNumberEnv("DIFY_MAX_TOTAL_STEPS", 20),
-  autoUploadRequiredFiles: readBooleanEnv("DIFY_AUTO_UPLOAD_REQUIRED_FILES", true),
+  autoUploadRequiredFiles: readBooleanEnv("DIFY_AUTO_UPLOAD_REQUIRED_FILES", false),
   testFilePath: process.env.DIFY_TEST_FILE_PATH || "test-assets/placeholder.txt",
   testUserId: process.env.TEST_USER_ID || "10001",
   testDoctorId: process.env.TEST_DOCTOR_ID || "3",

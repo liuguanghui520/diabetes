@@ -68,6 +68,17 @@ export function getWorkflowOutputs(response, label = "Workflow") {
 export function normalizeWorkflowOutput(response, preferredFields = [], label = "Workflow") {
   const outputs = getWorkflowOutputs(response, label);
 
+  // 有些 Workflow 的 End 节点直接把稳定契约字段放在 data.outputs 上，
+  // 例如 WF-DATA: { ok, action, data, warnings }。这种情况应直接返回整体，
+  // 否则扫描 Object.values 时会误把 outputs.data 当成最终输出。
+  if (
+    typeof outputs.ok === "boolean" ||
+    (typeof outputs.action === "string" && Object.hasOwn(outputs, "data")) ||
+    Object.hasOwn(outputs, "warnings")
+  ) {
+    return outputs;
+  }
+
   for (const fieldName of preferredFields) {
     if (outputs[fieldName] !== undefined) {
       return parseJsonOutput(outputs[fieldName]);
