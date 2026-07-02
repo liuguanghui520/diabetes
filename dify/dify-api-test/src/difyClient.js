@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 import axios from "axios";
-import { config } from "./config.js";
+import { config, getDifyApiKey } from "./config.js";
 
 function maskApiKey(value) {
   if (!value) return "";
@@ -9,52 +9,60 @@ function maskApiKey(value) {
   return `${value.slice(0, 6)}...${value.slice(-4)}`;
 }
 
-function normalizeAxiosError(error) {
+function createClient(appName = "default") {
+  const apiKey = getDifyApiKey(appName);
+  return axios.create({
+    baseURL: config.difyApiBaseUrl,
+    timeout: config.requestTimeout,
+    headers: {
+      Authorization: `Bearer ${apiKey}`
+    }
+  });
+}
+
+function normalizeAxiosError(error, appName = "default") {
   const status = error.response?.status;
   const responseData = error.response?.data;
   const cause = error.message || "未知错误";
+  const apiKey = getDifyApiKey(appName);
 
-  return {
-    message: "Dify Chatflow 请求失败",
-    status,
-    responseData,
-    cause,
-    request: {
-      baseURL: config.difyApiBaseUrl,
-      apiKey: maskApiKey(config.difyApiKey)
-    }
+  const responseText = responseData ? `；响应体：${JSON.stringify(responseData)}` : "";
+  const normalizedError = new Error(`Dify 请求失败：${cause}${responseText}`);
+  normalizedError.status = status;
+  normalizedError.responseData = responseData;
+  normalizedError.cause = cause;
+  normalizedError.request = {
+    appName,
+    baseURL: config.difyApiBaseUrl,
+    apiKey: maskApiKey(apiKey)
   };
+  return normalizedError;
 }
 
-const client = axios.create({
-  baseURL: config.difyApiBaseUrl,
-  timeout: config.requestTimeout,
-  headers: {
-    Authorization: `Bearer ${config.difyApiKey}`
-  }
-});
+const requiredFileVariablesCache = new Map();
 
-let requiredFileVariablesPromise;
-
-async function getRequiredFileVariables(user) {
+async function getRequiredFileVariables(client, appName, user) {
   if (!config.autoUploadRequiredFiles) {
     return [];
   }
 
-  requiredFileVariablesPromise ??= client
-    .get("/parameters", { params: { user } })
-    .then((response) => {
-      const forms = response.data?.user_input_form || [];
-      return forms
-        .map((item) => item.file)
-        .filter((item) => item?.required && item.variable)
-        .map((item) => item.variable);
-    });
+  if (!requiredFileVariablesCache.has(appName)) {
+    requiredFileVariablesCache.set(
+      appName,
+      client.get("/parameters", { params: { user } }).then((response) => {
+        const forms = response.data?.user_input_form || [];
+        return forms
+          .map((item) => item.file)
+          .filter((item) => item?.required && item.variable)
+          .map((item) => item.variable);
+      })
+    );
+  }
 
-  return requiredFileVariablesPromise;
+  return requiredFileVariablesCache.get(appName);
 }
 
-async function uploadTestFile(user) {
+async function uploadTestFile(client, user) {
   const filePath = resolve(config.testFilePath);
   const fileBuffer = await readFile(filePath);
   const formData = new FormData();
@@ -74,13 +82,13 @@ async function uploadTestFile(user) {
   };
 }
 
-async function addRequiredFileInputs(inputs, user) {
+async function addRequiredFileInputs({ client, appName, inputs, user }) {
   const nextInputs = { ...inputs };
-  const requiredFileVariables = await getRequiredFileVariables(user);
+  const requiredFileVariables = await getRequiredFileVariables(client, appName, user);
 
   for (const variableName of requiredFileVariables) {
     if (!nextInputs[variableName]) {
-      nextInputs[variableName] = await uploadTestFile(user);
+      nextInputs[variableName] = await uploadTestFile(client, user);
     }
   }
 
@@ -89,17 +97,25 @@ async function addRequiredFileInputs(inputs, user) {
 
 /**
  * 调用 Dify Chatflow 的阻塞模式接口。
- * 如果应用 Start 表单存在必填 file 变量，会自动上传占位文件并写入 inputs.file。
  * @param {object} params
+ * @param {string} [params.appName] 应用名，用于选择对应的 Dify API Key。
  * @param {string} params.query 用户本轮提问。
- * @param {object} params.inputs Start 节点输入，医生智能体需要 user_id、doctor_id、app_type。
- * @param {string} params.user Dify user 标识，Express 场景通常与 user_id 一致。
+ * @param {object} params.inputs Start 节点输入。
+ * @param {string} params.user Dify user 标识。
  * @param {string} [params.conversationId] 续聊时传上一轮 conversation_id。
  * @returns {Promise<object>} Dify 原始响应数据。
  */
-export async function sendChatMessage({ query, inputs, user, conversationId = "" }) {
+export async function sendChatMessage({
+  appName = "default",
+  query,
+  inputs,
+  user,
+  conversationId = ""
+}) {
+  const client = createClient(appName);
+
   try {
-    const preparedInputs = await addRequiredFileInputs(inputs, user);
+    const preparedInputs = await addRequiredFileInputs({ client, appName, inputs, user });
     const response = await client.post("/chat-messages", {
       query,
       inputs: preparedInputs,
@@ -110,7 +126,32 @@ export async function sendChatMessage({ query, inputs, user, conversationId = ""
 
     return response.data;
   } catch (error) {
-    throw normalizeAxiosError(error);
+    throw normalizeAxiosError(error, appName);
+  }
+}
+
+/**
+ * 调用 Dify Workflow 阻塞模式接口。
+ * @param {object} params
+ * @param {string} params.appName 应用名，用于选择对应的 Dify API Key。
+ * @param {object} params.inputs Workflow Start 输入。
+ * @param {string} params.user Dify user 标识。
+ * @returns {Promise<object>} Dify 原始响应数据。
+ */
+export async function runWorkflow({ appName, inputs, user }) {
+  const client = createClient(appName);
+
+  try {
+    const preparedInputs = await addRequiredFileInputs({ client, appName, inputs, user });
+    const response = await client.post("/workflows/run", {
+      inputs: preparedInputs,
+      response_mode: "blocking",
+      user
+    });
+
+    return response.data;
+  } catch (error) {
+    throw normalizeAxiosError(error, appName);
   }
 }
 

@@ -2,7 +2,7 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const requiredEnvNames = ["DIFY_API_BASE_URL", "DIFY_API_KEY"];
+const requiredEnvNames = ["DIFY_API_BASE_URL"];
 
 function readRequiredEnv(name) {
   const value = process.env[name];
@@ -10,6 +10,11 @@ function readRequiredEnv(name) {
     throw new Error(`缺少必要环境变量 ${name}，请复制 .env.example 为 .env 并填写真实配置。`);
   }
   return value.trim();
+}
+
+function readOptionalEnv(name) {
+  const value = process.env[name];
+  return value && value.trim() !== "" ? value.trim() : "";
 }
 
 function readNumberEnv(name, defaultValue) {
@@ -37,15 +42,37 @@ function normalizeBaseUrl(value) {
   return value.replace(/\/+$/, "");
 }
 
-export function validateRequiredEnv() {
+const appApiKeys = {
+  default: readOptionalEnv("DIFY_API_KEY"),
+  admin: readOptionalEnv("DIFY_ADMIN_API_KEY"),
+  report: readOptionalEnv("DIFY_REPORT_API_KEY"),
+  doctor: readOptionalEnv("DIFY_DOCTOR_API_KEY"),
+  assistant: readOptionalEnv("DIFY_ASSISTANT_API_KEY"),
+  plan: readOptionalEnv("DIFY_PLAN_API_KEY"),
+  checkin: readOptionalEnv("DIFY_CHECKIN_API_KEY"),
+  risk: readOptionalEnv("DIFY_RISK_API_KEY"),
+  data: readOptionalEnv("DIFY_DATA_API_KEY")
+};
+
+export function getDifyApiKey(appName = "default") {
+  const key = appApiKeys[appName] || appApiKeys.default;
+  if (!key) {
+    throw new Error(`缺少 Dify API Key：请配置 DIFY_${appName.toUpperCase()}_API_KEY 或 DIFY_API_KEY。`);
+  }
+  return key;
+}
+
+export function validateRequiredEnv(appName = "default") {
   for (const name of requiredEnvNames) {
     readRequiredEnv(name);
   }
+  getDifyApiKey(appName);
 }
 
 export const config = {
   difyApiBaseUrl: normalizeBaseUrl(readRequiredEnv("DIFY_API_BASE_URL")),
-  difyApiKey: readRequiredEnv("DIFY_API_KEY"),
+  difyApiKey: appApiKeys.default,
+  appApiKeys,
   requestTimeout: readNumberEnv("DIFY_REQUEST_TIMEOUT", 120000),
   maxElapsedTime: readNumberEnv("DIFY_MAX_ELAPSED_TIME", 60),
   maxTotalTokens: readNumberEnv("DIFY_MAX_TOTAL_TOKENS", 10000),
